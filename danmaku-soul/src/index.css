@@ -1,0 +1,433 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: #050508;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  font-family: 'Courier New', Courier, monospace;
+  color: #eee;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* ゲーム全体ラッパー */
+.game-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100vw;
+  height: 100vh;
+}
+
+.game-container {
+  position: relative;
+  width: 800px;
+  height: 600px;
+  border: 1px solid rgba(150, 80, 80, 0.4);
+  box-shadow:
+    0 0 30px rgba(200, 50, 50, 0.2),
+    0 0 80px rgba(100, 20, 20, 0.15),
+    inset 0 0 30px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+
+/* ============ HUD ============ */
+.hud {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* プレイヤーHP・スタミナ（左下） */
+.hud-player {
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+}
+
+.hp-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.heart {
+  font-size: 22px;
+  transition: color 0.2s;
+  text-shadow: 0 0 8px currentColor;
+}
+
+.heart-full {
+  color: #ff4466;
+}
+
+.heart-empty {
+  color: #333;
+  text-shadow: none;
+}
+
+.stamina-bar-wrap {
+  width: 160px;
+  height: 8px;
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(100, 200, 100, 0.3);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 3px;
+}
+
+.stamina-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.05s linear, background-color 0.3s;
+  box-shadow: 0 0 6px currentColor;
+}
+
+.stamina-label {
+  font-size: 10px;
+  color: rgba(150, 200, 150, 0.7);
+  letter-spacing: 2px;
+  margin-bottom: 8px;
+}
+
+/* スタックゲージ */
+.stack-row {
+  display: flex;
+  gap: 5px;
+  margin-bottom: 4px;
+}
+
+.stack-slot {
+  width: 22px;
+  height: 22px;
+  border: 2px solid rgba(150, 130, 80, 0.4);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.5);
+  transition: all 0.15s;
+}
+
+.stack-filled {
+  background: rgba(80, 180, 255, 0.6);
+  border-color: rgba(100, 200, 255, 0.8);
+  box-shadow: 0 0 8px rgba(80, 180, 255, 0.6);
+}
+
+.stack-heal {
+  background: rgba(80, 220, 140, 0.65);
+  border-color: rgba(100, 255, 160, 0.8);
+  box-shadow: 0 0 8px rgba(80, 220, 140, 0.6);
+}
+
+.stack-ult {
+  background: rgba(255, 200, 40, 0.7);
+  border-color: rgba(255, 220, 80, 0.9);
+  box-shadow: 0 0 10px rgba(255, 180, 0, 0.7);
+  animation: stack-ult-pulse 0.8s ease-in-out infinite alternate;
+}
+
+@keyframes stack-ult-pulse {
+  from { box-shadow: 0 0 8px rgba(255, 180, 0, 0.5); }
+  to   { box-shadow: 0 0 16px rgba(255, 220, 0, 1); }
+}
+
+.stack-label {
+  font-size: 10px;
+  letter-spacing: 1px;
+  line-height: 1.7;
+}
+
+.stack-action-ready {
+  color: rgba(80, 255, 160, 0.9);
+  text-shadow: 0 0 6px rgba(80, 255, 160, 0.6);
+}
+
+.stack-action-ult {
+  color: rgba(255, 200, 40, 0.95);
+  text-shadow: 0 0 8px rgba(255, 180, 0, 0.7);
+}
+
+.stack-action-dim {
+  color: rgba(150, 150, 150, 0.4);
+}
+
+/* 必殺技バッジ */
+.ult-active-badge {
+  margin-top: 6px;
+  font-size: 13px;
+  font-weight: bold;
+  letter-spacing: 3px;
+  color: #ffe066;
+  text-shadow: 0 0 12px #ffcc00, 0 0 24px #ff8800;
+  animation: ult-badge-glow 0.5s ease-in-out infinite alternate;
+}
+
+@keyframes ult-badge-glow {
+  from { opacity: 0.8; }
+  to   { opacity: 1; text-shadow: 0 0 20px #ffcc00, 0 0 40px #ff8800; }
+}
+
+/* ボスHPバー（上部中央） */
+.hud-boss {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 500px;
+  text-align: center;
+}
+
+.boss-name {
+  font-size: 13px;
+  letter-spacing: 3px;
+  color: #cc8866;
+  text-shadow: 0 0 10px #cc4400;
+  margin-bottom: 6px;
+  font-weight: bold;
+}
+
+.boss-hp-bar-wrap {
+  position: relative;
+  width: 100%;
+  height: 10px;
+  background: rgba(0, 0, 0, 0.7);
+  border: 1px solid rgba(200, 80, 30, 0.4);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.boss-hp-bar-fill {
+  height: 100%;
+  border-radius: 5px;
+  transition: width 0.1s linear;
+  box-shadow: 0 0 8px currentColor;
+}
+
+.boss-hp-phase-mark {
+  position: absolute;
+  top: 0;
+  width: 2px;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* 操作説明（右下） */
+.hud-controls {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  text-align: right;
+  font-size: 11px;
+  color: rgba(180, 180, 180, 0.5);
+  line-height: 1.8;
+}
+
+.hud-hint {
+  color: rgba(0, 200, 200, 0.6);
+  margin-top: 4px;
+}
+
+/* ============ オーバーレイ共通 ============ */
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(2px);
+}
+
+.overlay-dead {
+  background: rgba(30, 0, 0, 0.85);
+}
+
+.overlay-pause {
+  background: rgba(5, 5, 20, 0.88);
+}
+
+.overlay-victory {
+  background: rgba(0, 20, 30, 0.85);
+}
+
+.overlay-content {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+/* タイトル */
+.title-main {
+  font-size: 64px;
+  font-weight: 900;
+  letter-spacing: 6px;
+  line-height: 1.1;
+  color: #fff;
+  text-shadow:
+    0 0 20px rgba(200, 80, 0, 0.8),
+    0 0 60px rgba(200, 80, 0, 0.4);
+}
+
+.title-sub {
+  font-size: 16px;
+  letter-spacing: 4px;
+  color: #cc8844;
+  text-shadow: 0 0 10px #aa4400;
+}
+
+.title-controls {
+  font-size: 13px;
+  color: rgba(200, 200, 200, 0.7);
+  line-height: 2;
+  border: 1px solid rgba(150, 80, 30, 0.3);
+  padding: 14px 24px;
+  letter-spacing: 1px;
+}
+
+/* You Died */
+.dead-title {
+  font-size: 64px;
+  font-weight: 900;
+  letter-spacing: 8px;
+  color: #cc2200;
+  text-shadow:
+    0 0 20px rgba(255, 50, 0, 0.9),
+    0 0 60px rgba(200, 0, 0, 0.5);
+  animation: fadeInGrow 0.8s ease-out;
+}
+
+.dead-sub {
+  font-size: 16px;
+  letter-spacing: 3px;
+  color: rgba(200, 100, 80, 0.8);
+}
+
+/* Victory */
+.victory-title {
+  font-size: 52px;
+  font-weight: 900;
+  letter-spacing: 6px;
+  color: #ffcc44;
+  text-shadow:
+    0 0 20px rgba(255, 200, 0, 0.9),
+    0 0 60px rgba(200, 150, 0, 0.5);
+  animation: fadeInGrow 0.8s ease-out;
+}
+
+.victory-sub {
+  font-size: 16px;
+  letter-spacing: 3px;
+  color: rgba(200, 200, 100, 0.8);
+}
+
+/* ポーズメニュー */
+.pause-title {
+  font-size: 48px;
+  font-weight: 900;
+  letter-spacing: 8px;
+  color: #ccccff;
+  text-shadow: 0 0 20px rgba(150, 150, 255, 0.7);
+  margin-bottom: 8px;
+}
+
+.pause-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 220px;
+}
+
+.pause-btn {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 15px;
+  font-weight: bold;
+  letter-spacing: 2px;
+  color: #ddd;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(150, 150, 200, 0.35);
+  padding: 12px 20px;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-align: left;
+}
+
+.pause-btn:hover {
+  background: rgba(150, 150, 255, 0.15);
+  border-color: rgba(180, 180, 255, 0.7);
+  color: #fff;
+  transform: translateX(4px);
+}
+
+.pause-btn-quit {
+  color: rgba(255, 120, 100, 0.85);
+  border-color: rgba(200, 80, 60, 0.35);
+  margin-top: 8px;
+}
+
+.pause-btn-quit:hover {
+  background: rgba(200, 60, 40, 0.2);
+  border-color: rgba(255, 100, 80, 0.7);
+  color: #ff8866;
+  transform: translateX(4px);
+}
+
+.pause-hint {
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: rgba(150, 150, 180, 0.5);
+  margin-top: 4px;
+}
+
+/* ボタン */
+.start-btn {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 16px;
+  font-weight: bold;
+  letter-spacing: 4px;
+  color: #fff;
+  background: transparent;
+  border: 2px solid rgba(200, 100, 50, 0.6);
+  padding: 14px 40px;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-shadow: 0 0 8px rgba(200, 100, 0, 0.8);
+  box-shadow: 0 0 20px rgba(200, 80, 0, 0.2);
+}
+
+.start-btn:hover {
+  background: rgba(200, 80, 0, 0.15);
+  border-color: rgba(255, 150, 80, 0.9);
+  box-shadow: 0 0 30px rgba(200, 80, 0, 0.4);
+  transform: scale(1.03);
+}
+
+.start-btn-victory {
+  border-color: rgba(200, 180, 50, 0.6);
+  text-shadow: 0 0 8px rgba(200, 180, 0, 0.8);
+  box-shadow: 0 0 20px rgba(200, 180, 0, 0.2);
+}
+
+.start-btn-victory:hover {
+  background: rgba(200, 180, 0, 0.15);
+  border-color: rgba(255, 220, 80, 0.9);
+  box-shadow: 0 0 30px rgba(200, 180, 0, 0.4);
+}
+
+/* アニメーション */
+@keyframes fadeInGrow {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
