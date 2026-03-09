@@ -26,7 +26,7 @@ export const ULT_STACK_COST = 4;            // 必殺技に必要なスタック
 
 // ビーム攻撃
 export const BEAM_DAMAGE_INTERVAL = 8;      // ビームがダメージを与える間隔（フレーム）
-export const BEAM_DAMAGE = 8;               // 1ヒットあたりのダメージ
+export const BEAM_DAMAGE = 2;               // 1ヒットあたりのダメージ（通常）
 export const BEAM_LIFE = 6;                 // ビームの描画持続フレーム
 export const BEAM_STAMINA_COST = 0;         // ビームはスタミナ消費なし（長押し継続可）
 

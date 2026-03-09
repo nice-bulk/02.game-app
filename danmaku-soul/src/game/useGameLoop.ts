@@ -171,7 +171,7 @@ export function useGameLoop(canvasRef: React.RefObject<HTMLCanvasElement | null>
       if (e.button === 0) inp.beamFire = true;
       if (e.button === 2) {
         inp.parry = true;
-        parryFramesRef.current = 25; // Refに直書き → 即座にループで参照可能
+        parryFramesRef.current = 8; // 8フレーム以内（厳しめ）
       }
       if (e.button === 1) inp.ultimate = true;
       s.setInput(inp);
@@ -375,9 +375,20 @@ export function useGameLoop(canvasRef: React.RefObject<HTMLCanvasElement | null>
             ultActive: true,
             ultTimer: ULT_DURATION,
           }));
-          store.getState().addScreenShake(5, 20);
+          // ボスに特大ダメージ（即時100ダメ）
+          store.getState().setBoss((b: Boss) => {
+            const newHp = Math.max(0, b.hp - 100);
+            if (newHp <= 0) store.getState().setPhase('victory');
+            return { ...b, hp: newHp, hitFlash: 30, stunTimer: 30 };
+          });
+          store.getState().addScreenShake(12, 40);
           store.getState().addParticles(
-            makeParticles(store.getState().nextParticleId, pl.pos.x, pl.pos.y, 20, 6, 60, '#ffcc00')
+            makeParticles(store.getState().nextParticleId, pl.pos.x, pl.pos.y, 30, 8, 70, '#ffcc00')
+          );
+          // ボス座標にも爆発エフェクト
+          const bossPos = store.getState().boss.pos;
+          store.getState().addParticles(
+            makeParticles(store.getState().nextParticleId, bossPos.x, bossPos.y, 30, 7, 60, '#ff8800')
           );
         }
       }
@@ -475,7 +486,7 @@ export function useGameLoop(canvasRef: React.RefObject<HTMLCanvasElement | null>
       // ================================================================
       // 当たり判定
       // ================================================================
-      const { player: pl, boss, bullets } = store.getState();
+      const { player: pl, bullets } = store.getState();
       const parryActive = parryFramesRef.current > 0;
       const bulletsToRemove = new Set<number>();
 
@@ -503,56 +514,49 @@ export function useGameLoop(canvasRef: React.RefObject<HTMLCanvasElement | null>
 
         // ----------------------------------------------------------------
         // パリィ判定（ボムのみ）
-        // parryActive = 右クリックから25フレーム以内
-        // ボムが画面に存在すれば無条件でパリィ成功
+        // 条件: 右クリックから8フレーム以内 & プレイヤーとボムが近い（距離制限あり）
+        // 跳ね返しなし → ボムを消してスタック+1 & 2秒無敵
         // ----------------------------------------------------------------
         if (bullet.type === 'bomb' && bullet.parryWindowTimer > 0 && parryActive && !parriedThisFrame) {
-          bulletsToRemove.add(bullet.id);
-          parryFramesRef.current = 0;
-          parriedThisFrame = true; // 同フレームで2個パリィしない
+          // 距離チェック（プレイヤー半径 + ボム半径 + 50px以内）
+          const parryRange = pl.radius + bullet.radius + 50;
+          if (d < parryRange) {
+            bulletsToRemove.add(bullet.id);
+            parryFramesRef.current = 0;
+            parriedThisFrame = true;
 
-          const dir = normalize(boss.pos.x - bullet.pos.x, boss.pos.y - bullet.pos.y);
-          const reflected: Bullet = {
-            id: store.getState().nextBulletId(),
-            pos: { ...bullet.pos },
-            vel: { x: dir.x * 4, y: dir.y * 4 },
-            radius: bullet.radius,
-            type: 'bomb',
-            fromBoss: false,
-            parryWindowTimer: 0,
-          };
-          store.getState().setBullets((prev) => [...prev, reflected]);
-          store.getState().addParticles(
-            makeParticles(store.getState().nextParticleId, bullet.pos.x, bullet.pos.y, 20, 6, 50, '#ffffff')
-          );
-          store.getState().setHitstop(HITSTOP_PARRY);
-          store.getState().addScreenShake(5, 18);
+            store.getState().addParticles(
+              makeParticles(store.getState().nextParticleId, bullet.pos.x, bullet.pos.y, 20, 6, 50, '#00ffff')
+            );
+            store.getState().setHitstop(HITSTOP_PARRY);
+            store.getState().addScreenShake(5, 18);
 
-          // スタック +1 & パリィ後2秒無敵
-          store.getState().setPlayer((p: Player) => ({
-            ...p,
-            stack: Math.min(p.maxStack, p.stack + 1),
-            invincible: true,
-            rollTimer: PARRY_INVINCIBLE_FRAMES,
-            reflexFlash: 40,
-          }));
+            // スタック +1 & パリィ後2秒無敵
+            store.getState().setPlayer((p: Player) => ({
+              ...p,
+              stack: Math.min(p.maxStack, p.stack + 1),
+              invincible: true,
+              rollTimer: PARRY_INVINCIBLE_FRAMES,
+              reflexFlash: 40,
+            }));
 
-          store.getState().setBoss((b: Boss) => {
-            const newPoise = b.poise - 1;
-            if (newPoise <= 0) {
-              store.getState().addScreenShake(10, 35);
-              store.getState().addParticles(
-                makeParticles(store.getState().nextParticleId, b.pos.x, b.pos.y, 25, 7, 70, '#ff8800')
-              );
-              return {
-                ...b, poise: BOSS_MAX_POISE, poiseRecoverTimer: 0,
-                stunTimer: BOSS_STUN_DURATION, hitFlash: 40,
-                hp: Math.max(0, b.hp - 50),
-              };
-            }
-            return { ...b, poise: newPoise, hitFlash: 12 };
-          });
-          continue;
+            store.getState().setBoss((b: Boss) => {
+              const newPoise = b.poise - 1;
+              if (newPoise <= 0) {
+                store.getState().addScreenShake(10, 35);
+                store.getState().addParticles(
+                  makeParticles(store.getState().nextParticleId, b.pos.x, b.pos.y, 25, 7, 70, '#ff8800')
+                );
+                return {
+                  ...b, poise: BOSS_MAX_POISE, poiseRecoverTimer: 0,
+                  stunTimer: BOSS_STUN_DURATION, hitFlash: 40,
+                  hp: Math.max(0, b.hp - 30),
+                };
+              }
+              return { ...b, poise: newPoise, hitFlash: 12 };
+            });
+            continue;
+          }
         }
 
         // ----------------------------------------------------------------
@@ -579,26 +583,6 @@ export function useGameLoop(canvasRef: React.RefObject<HTMLCanvasElement | null>
           store.getState().addParticles(
             makeParticles(store.getState().nextParticleId, pl.pos.x, pl.pos.y, 12, 5, 40, '#ff4444')
           );
-        }
-      }
-
-      // 跳ね返しボムがボスに当たる
-      const { bullets: latestBullets, boss: latestBoss } = store.getState();
-      for (const bullet of latestBullets) {
-        if (bullet.fromBoss) continue;
-        if (bulletsToRemove.has(bullet.id)) continue;
-        const d = dist(latestBoss.pos, bullet.pos);
-        if (d < latestBoss.radius + bullet.radius) {
-          bulletsToRemove.add(bullet.id);
-          store.getState().setBoss((b: Boss) => {
-            const newHp = Math.max(0, b.hp - 40);
-            if (newHp <= 0) store.getState().setPhase('victory');
-            return { ...b, hp: newHp, hitFlash: 15 };
-          });
-          store.getState().addParticles(
-            makeParticles(store.getState().nextParticleId, bullet.pos.x, bullet.pos.y, 15, 5, 45, '#ff8800')
-          );
-          store.getState().addScreenShake(4, 12);
         }
       }
 
