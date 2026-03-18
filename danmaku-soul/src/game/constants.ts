@@ -42,11 +42,18 @@ export const BOSS_MAX_POISE = 4;
 export const BOSS_POISE_RECOVER_TIME = 200;
 export const BOSS_STUN_DURATION = 150;
 
+// ボス移動
+export const BOSS_MOVE_SPEED_P1 = 0.8;
+export const BOSS_MOVE_SPEED_P2 = 1.3;
+export const BOSS_MOVE_SPEED_P3 = 2.0;
+export const BOSS_MOVE_CHANGE_INTERVAL = 180; // 移動方向変更間隔（フレーム）
+export const BOSS_MARGIN = 80;               // 壁からの最小距離
+
 // 弾・ボム
 export const BULLET_RADIUS = 6;
 export const BOMB_RADIUS = 28;              // 巨大ボム
 export const BOMB_SPEED = 1.4;
-export const PARRY_WINDOW = 9999;          // ボムは飛んでいる間ずっとパリィ可能
+export const PARRY_WINDOW = 9999;           // ボムは飛んでいる間ずっとパリィ可能
 export const BOMB_DAMAGE = 2;              // ボム被弾のダメージ
 
 // ボム投擲インターバル（フェーズ別）
@@ -66,3 +73,6 @@ export const HITSTOP_HIT = 6;
 // フェーズ閾値
 export const PHASE2_THRESHOLD = 0.6;
 export const PHASE3_THRESHOLD = 0.3;
+
+// フェーズ移行演出
+export const PHASE_TRANSITION_DURATION = 90; // フェーズ移行エフェクトフレーム数

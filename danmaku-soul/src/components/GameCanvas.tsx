@@ -1,15 +1,118 @@
 import { useEffect, useRef } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { useGameLoop } from '../game/useGameLoop';
-import { CANVAS_WIDTH, CANVAS_HEIGHT, ULT_DURATION } from '../game/constants';
+import { CANVAS_WIDTH, CANVAS_HEIGHT, ULT_DURATION, PHASE_TRANSITION_DURATION } from '../game/constants';
 import type { Player, Boss, Bullet, Beam, Particle } from '../game/types';
 
-function drawPlayer(ctx: CanvasRenderingContext2D, player: Player) {
-  const { pos, radius, isRolling, hitFlash, reflexFlash, invincible, ultActive, ultTimer } = player;
+// ============================
+// 背景描画（強化版）
+// ============================
+function drawBackground(ctx: CanvasRenderingContext2D, frame: number, bossPhase: number) {
+  ctx.save();
+
+  // 基本グリッド（奥行き感のある2層）
+  const gridSize = 40;
+  const speed1 = (frame * 0.4) % gridSize;
+  const speed2 = (frame * 0.15) % (gridSize * 2);
+
+  // 遠景グリッド（薄い）
+  ctx.strokeStyle = `rgba(60, 20, 80, 0.18)`;
+  ctx.lineWidth = 0.5;
+  for (let x = -gridSize; x < CANVAS_WIDTH + gridSize; x += gridSize * 2) {
+    ctx.beginPath();
+    ctx.moveTo(x + speed2, 0);
+    ctx.lineTo(x + speed2, CANVAS_HEIGHT);
+    ctx.stroke();
+  }
+  for (let y = -gridSize * 2; y < CANVAS_HEIGHT + gridSize * 2; y += gridSize * 2) {
+    ctx.beginPath();
+    ctx.moveTo(0, y + speed2);
+    ctx.lineTo(CANVAS_WIDTH, y + speed2);
+    ctx.stroke();
+  }
+
+  // 近景グリッド
+  const gridAlpha = bossPhase === 3 ? 0.35 : bossPhase === 2 ? 0.28 : 0.22;
+  ctx.strokeStyle = `rgba(80, 30, 100, ${gridAlpha})`;
+  ctx.lineWidth = 0.8;
+  for (let x = -gridSize; x < CANVAS_WIDTH + gridSize; x += gridSize) {
+    ctx.beginPath();
+    ctx.moveTo(x + speed1, 0);
+    ctx.lineTo(x + speed1, CANVAS_HEIGHT);
+    ctx.stroke();
+  }
+  for (let y = -gridSize; y < CANVAS_HEIGHT + gridSize; y += gridSize) {
+    ctx.beginPath();
+    ctx.moveTo(0, y + speed1);
+    ctx.lineTo(CANVAS_WIDTH, y + speed1);
+    ctx.stroke();
+  }
+
+  // スキャンライン（CRTエフェクト）
+  const scanAlpha = 0.04;
+  ctx.fillStyle = `rgba(0, 0, 0, ${scanAlpha})`;
+  for (let y = 0; y < CANVAS_HEIGHT; y += 4) {
+    ctx.fillRect(0, y, CANVAS_WIDTH, 2);
+  }
+
+  ctx.restore();
+}
+
+// ============================
+// フェーズ移行エフェクト
+// ============================
+function drawPhaseTransition(
+  ctx: CanvasRenderingContext2D,
+  boss: Boss,
+) {
+  if (boss.phaseTransitionTimer <= 0) return;
+
+  const progress = boss.phaseTransitionTimer / PHASE_TRANSITION_DURATION;
+  const ease = Math.sin(progress * Math.PI); // ベルカーブ
 
   ctx.save();
 
-  // 必殺技中のオーラ
+  // 画面端から中央へ走るフラッシュライン
+  const lineColor = boss.phase === 3 ? `rgba(255, 30, 0, ${ease * 0.7})` : `rgba(255, 100, 0, ${ease * 0.6})`;
+  const lineCount = 8;
+  ctx.strokeStyle = lineColor;
+  ctx.lineWidth = 2;
+  for (let i = 0; i < lineCount; i++) {
+    const y = (CANVAS_HEIGHT / lineCount) * i + (CANVAS_HEIGHT / lineCount / 2);
+    const xLen = CANVAS_WIDTH * (1 - progress) * ease;
+    ctx.beginPath();
+    ctx.moveTo(CANVAS_WIDTH / 2 - xLen / 2, y);
+    ctx.lineTo(CANVAS_WIDTH / 2 + xLen / 2, y);
+    ctx.stroke();
+  }
+
+  // 全画面フラッシュ
+  const flashAlpha = ease * (boss.phase === 3 ? 0.22 : 0.15);
+  ctx.fillStyle = boss.phase === 3
+    ? `rgba(200, 0, 0, ${flashAlpha})`
+    : `rgba(220, 80, 0, ${flashAlpha})`;
+  ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+  // ボス周囲リング
+  const ringRadius = boss.radius + 60 * ease;
+  ctx.beginPath();
+  ctx.arc(boss.pos.x, boss.pos.y, ringRadius, 0, Math.PI * 2);
+  ctx.strokeStyle = boss.phase === 3
+    ? `rgba(255, 50, 0, ${ease * 0.8})`
+    : `rgba(255, 120, 0, ${ease * 0.8})`;
+  ctx.lineWidth = 4 * ease;
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+// ============================
+// プレイヤー描画
+// ============================
+function drawPlayer(ctx: CanvasRenderingContext2D, player: Player) {
+  const { pos, radius, isRolling, hitFlash, reflexFlash, invincible, ultActive, ultTimer } = player;
+  ctx.save();
+
   if (ultActive) {
     const pulse = Math.sin(Date.now() * 0.01) * 0.3 + 0.7;
     const grd = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, radius * 4);
@@ -19,7 +122,6 @@ function drawPlayer(ctx: CanvasRenderingContext2D, player: Player) {
     ctx.beginPath();
     ctx.arc(pos.x, pos.y, radius * 4, 0, Math.PI * 2);
     ctx.fill();
-    // タイマーリング
     const ratio = ultTimer / ULT_DURATION;
     ctx.beginPath();
     ctx.arc(pos.x, pos.y, radius + 8, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * ratio);
@@ -28,7 +130,6 @@ function drawPlayer(ctx: CanvasRenderingContext2D, player: Player) {
     ctx.stroke();
   }
 
-  // ジャスト回避/回復エフェクト
   if (reflexFlash > 0) {
     const grd = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, radius * 3);
     grd.addColorStop(0, `rgba(0, 255, 180, ${reflexFlash / 30 * 0.6})`);
@@ -39,13 +140,11 @@ function drawPlayer(ctx: CanvasRenderingContext2D, player: Player) {
     ctx.fill();
   }
 
-  // 無敵中点滅
   if (invincible && !isRolling && Math.floor(Date.now() / 80) % 2 === 0) {
     ctx.restore();
     return;
   }
 
-  // 本体
   ctx.beginPath();
   ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
 
@@ -71,7 +170,6 @@ function drawPlayer(ctx: CanvasRenderingContext2D, player: Player) {
   ctx.lineWidth = 2;
   ctx.stroke();
 
-  // 中心点（当たり判定）
   ctx.beginPath();
   ctx.arc(pos.x, pos.y, 3, 0, Math.PI * 2);
   ctx.fillStyle = '#ffffff';
@@ -80,13 +178,15 @@ function drawPlayer(ctx: CanvasRenderingContext2D, player: Player) {
   ctx.restore();
 }
 
+// ============================
+// ビーム描画
+// ============================
 function drawBeams(ctx: CanvasRenderingContext2D, beams: Beam[], ultActive: boolean) {
   for (const beam of beams) {
     const alpha = beam.life / beam.maxLife;
     ctx.save();
     ctx.globalAlpha = alpha;
 
-    // 外側の太いグロー
     ctx.beginPath();
     ctx.moveTo(beam.originX, beam.originY);
     ctx.lineTo(beam.targetX, beam.targetY);
@@ -97,7 +197,6 @@ function drawBeams(ctx: CanvasRenderingContext2D, beams: Beam[], ultActive: bool
     ctx.shadowBlur = 20;
     ctx.stroke();
 
-    // 内側の細いコア
     ctx.beginPath();
     ctx.moveTo(beam.originX, beam.originY);
     ctx.lineTo(beam.targetX, beam.targetY);
@@ -110,14 +209,52 @@ function drawBeams(ctx: CanvasRenderingContext2D, beams: Beam[], ultActive: bool
   }
 }
 
+// ============================
+// ボス描画（移動軌跡エフェクト追加）
+// ============================
 function drawBoss(ctx: CanvasRenderingContext2D, boss: Boss) {
   const { pos, radius, hp, maxHp, phase, poise, maxPoise, stunTimer,
-    telegraphActive, bombTelegraphActive, hitFlash } = boss;
+    telegraphActive, bombTelegraphActive, hitFlash, phaseTransitionTimer } = boss;
   const hpRatio = hp / maxHp;
+  const isTransitioning = phaseTransitionTimer > 0;
 
   ctx.save();
 
-  // ボム予兆（大きな赤いパルス）
+  // 移動エフェクト（フェーズに応じた速度感を示す軌跡）
+  if (phase >= 2) {
+    const trailAlpha = phase === 3 ? 0.3 : 0.2;
+    const trailDist = phase === 3 ? 20 : 12;
+    const velNorm = Math.sqrt(boss.vel.x ** 2 + boss.vel.y ** 2);
+    if (velNorm > 0.1) {
+      const trailX = pos.x - (boss.vel.x / velNorm) * trailDist;
+      const trailY = pos.y - (boss.vel.y / velNorm) * trailDist;
+      const grd = ctx.createRadialGradient(trailX, trailY, 0, trailX, trailY, radius);
+      const trailColor = phase === 3 ? `rgba(200, 0, 0, ${trailAlpha})` : `rgba(140, 40, 0, ${trailAlpha})`;
+      grd.addColorStop(0, trailColor);
+      grd.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = grd;
+      ctx.beginPath();
+      ctx.arc(trailX, trailY, radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // フェーズ移行中のパルスリング
+  if (isTransitioning) {
+    const progress = phaseTransitionTimer / PHASE_TRANSITION_DURATION;
+    const pulse = Math.sin(progress * Math.PI * 4) * 0.5 + 0.5;
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, radius * (1.2 + pulse * 0.5), 0, Math.PI * 2);
+    ctx.strokeStyle = phase === 3
+      ? `rgba(255, 50, 0, ${pulse * 0.9})`
+      : `rgba(255, 120, 0, ${pulse * 0.8})`;
+    ctx.lineWidth = 6;
+    ctx.shadowColor = phase === 3 ? '#ff2200' : '#ff6600';
+    ctx.shadowBlur = 30;
+    ctx.stroke();
+  }
+
+  // ボム予兆
   if (bombTelegraphActive) {
     const pulse = Math.sin(Date.now() * 0.03) * 0.4 + 0.5;
     ctx.beginPath();
@@ -203,12 +340,14 @@ function drawBoss(ctx: CanvasRenderingContext2D, boss: Boss) {
   ctx.restore();
 }
 
+// ============================
+// 弾描画
+// ============================
 function drawBullet(ctx: CanvasRenderingContext2D, bullet: Bullet) {
   const { pos, radius, type, fromBoss, parryWindowTimer } = bullet;
   ctx.save();
 
   if (!fromBoss) {
-    // 跳ね返しボム
     ctx.beginPath();
     ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
     ctx.fillStyle = '#ffffff';
@@ -219,11 +358,9 @@ function drawBullet(ctx: CanvasRenderingContext2D, bullet: Bullet) {
     ctx.lineWidth = 3;
     ctx.stroke();
   } else if (type === 'bomb') {
-    // 巨大ボム（パリィ可能）
     const canParry = parryWindowTimer > 0;
     const pulse = canParry ? Math.sin(Date.now() * 0.03) * 0.2 + 0.8 : 1;
 
-    // 外周グロー
     ctx.beginPath();
     ctx.arc(pos.x, pos.y, radius * 1.4, 0, Math.PI * 2);
     ctx.fillStyle = canParry
@@ -231,7 +368,6 @@ function drawBullet(ctx: CanvasRenderingContext2D, bullet: Bullet) {
       : 'rgba(180, 40, 0, 0.15)';
     ctx.fill();
 
-    // 本体
     ctx.beginPath();
     ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
     const bombGrd = ctx.createRadialGradient(pos.x - radius * 0.3, pos.y - radius * 0.3, 0, pos.x, pos.y, radius);
@@ -251,7 +387,6 @@ function drawBullet(ctx: CanvasRenderingContext2D, bullet: Bullet) {
     ctx.lineWidth = 3;
     ctx.stroke();
 
-    // パリィウィンドウ中のリングエフェクト
     if (canParry) {
       const ringR = radius + 10 + Math.sin(Date.now() * 0.05) * 4;
       ctx.beginPath();
@@ -259,7 +394,6 @@ function drawBullet(ctx: CanvasRenderingContext2D, bullet: Bullet) {
       ctx.strokeStyle = `rgba(255, 200, 80, ${parryWindowTimer / 60 * 0.8})`;
       ctx.lineWidth = 4;
       ctx.stroke();
-      // 中のシンボル
       ctx.font = 'bold 16px monospace';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
@@ -267,7 +401,7 @@ function drawBullet(ctx: CanvasRenderingContext2D, bullet: Bullet) {
       ctx.fillText('⟳', pos.x, pos.y);
     }
   } else {
-    // 通常弾（赤）
+    // 通常弾（フェーズによって色変化）
     ctx.beginPath();
     ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
     ctx.fillStyle = '#ff4422';
@@ -281,6 +415,9 @@ function drawBullet(ctx: CanvasRenderingContext2D, bullet: Bullet) {
   ctx.restore();
 }
 
+// ============================
+// パーティクル描画
+// ============================
 function drawParticle(ctx: CanvasRenderingContext2D, p: Particle) {
   const alpha = p.life / p.maxLife;
   ctx.save();
@@ -294,28 +431,9 @@ function drawParticle(ctx: CanvasRenderingContext2D, p: Particle) {
   ctx.restore();
 }
 
-function drawBackground(ctx: CanvasRenderingContext2D, frame: number) {
-  ctx.save();
-  ctx.strokeStyle = 'rgba(80, 40, 80, 0.3)';
-  ctx.lineWidth = 1;
-  const gridSize = 40;
-  const offset = (frame * 0.5) % gridSize;
-  for (let x = -gridSize; x < CANVAS_WIDTH + gridSize; x += gridSize) {
-    ctx.beginPath();
-    ctx.moveTo(x + offset, 0);
-    ctx.lineTo(x + offset, CANVAS_HEIGHT);
-    ctx.stroke();
-  }
-  for (let y = -gridSize; y < CANVAS_HEIGHT + gridSize; y += gridSize) {
-    ctx.beginPath();
-    ctx.moveTo(0, y + offset);
-    ctx.lineTo(CANVAS_WIDTH, y + offset);
-    ctx.stroke();
-  }
-  ctx.restore();
-}
-
-// カーソルの十字線（照準）
+// ============================
+// カーソル照準
+// ============================
 function drawCrosshair(ctx: CanvasRenderingContext2D, mx: number, my: number, ultActive: boolean) {
   ctx.save();
   ctx.strokeStyle = ultActive ? 'rgba(255, 200, 0, 0.8)' : 'rgba(100, 220, 255, 0.7)';
@@ -324,20 +442,21 @@ function drawCrosshair(ctx: CanvasRenderingContext2D, mx: number, my: number, ul
   ctx.shadowBlur = 6;
   const size = 10;
   const gap = 4;
-  // 十字
   ctx.beginPath();
   ctx.moveTo(mx - size - gap, my); ctx.lineTo(mx - gap, my);
   ctx.moveTo(mx + gap, my);       ctx.lineTo(mx + size + gap, my);
   ctx.moveTo(mx, my - size - gap); ctx.lineTo(mx, my - gap);
   ctx.moveTo(mx, my + gap);       ctx.lineTo(mx, my + size + gap);
   ctx.stroke();
-  // 外円
   ctx.beginPath();
   ctx.arc(mx, my, size, 0, Math.PI * 2);
   ctx.stroke();
   ctx.restore();
 }
 
+// ============================
+// GameCanvas コンポーネント
+// ============================
 export function GameCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const frameCountRef = useRef(0);
@@ -350,7 +469,6 @@ export function GameCanvas() {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // カーソル非表示
     canvas.style.cursor = 'none';
 
     let raf: number;
@@ -370,13 +488,14 @@ export function GameCanvas() {
       ctx.translate(shakeX, shakeY);
 
       // 背景
-      ctx.fillStyle = '#0a0a14';
+      ctx.fillStyle = '#060610';
       ctx.fillRect(-10, -10, CANVAS_WIDTH + 20, CANVAS_HEIGHT + 20);
-      drawBackground(ctx, frameCountRef.current);
+      drawBackground(ctx, frameCountRef.current, boss.phase);
 
-      // ボス発光エリア
-      const bossGrd = ctx.createRadialGradient(boss.pos.x, boss.pos.y, 0, boss.pos.x, boss.pos.y, 200);
-      const bossAlpha = boss.phase === 3 ? 0.12 : boss.phase === 2 ? 0.08 : 0.05;
+      // ボス発光エリア（フェーズによって広がる）
+      const bossGlowSize = boss.phase === 3 ? 280 : boss.phase === 2 ? 230 : 180;
+      const bossGrd = ctx.createRadialGradient(boss.pos.x, boss.pos.y, 0, boss.pos.x, boss.pos.y, bossGlowSize);
+      const bossAlpha = boss.phase === 3 ? 0.14 : boss.phase === 2 ? 0.09 : 0.05;
       bossGrd.addColorStop(0, `rgba(200, 50, 0, ${bossAlpha})`);
       bossGrd.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.fillStyle = bossGrd;
@@ -388,6 +507,9 @@ export function GameCanvas() {
         ctx.fillStyle = `rgba(255, 180, 0, ${ultPulse})`;
         ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
       }
+
+      // フェーズ移行エフェクト
+      drawPhaseTransition(ctx, boss);
 
       // 描画順
       particles.forEach((p) => drawParticle(ctx, p));

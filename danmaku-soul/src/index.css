@@ -189,6 +189,16 @@ body {
   text-shadow: 0 0 10px #cc4400;
   margin-bottom: 6px;
   font-weight: bold;
+  transition: color 0.3s;
+}
+
+.boss-name-flash {
+  animation: boss-name-pulse 0.15s ease-in-out infinite alternate;
+}
+
+@keyframes boss-name-pulse {
+  from { color: #cc8866; text-shadow: 0 0 10px #cc4400; }
+  to   { color: #ff4400; text-shadow: 0 0 20px #ff2200, 0 0 40px #ff0000; }
 }
 
 .boss-hp-bar-wrap {
@@ -216,20 +226,20 @@ body {
   background: rgba(255, 255, 255, 0.3);
 }
 
-/* 操作説明（右下） */
-.hud-controls {
-  position: absolute;
-  bottom: 20px;
-  right: 20px;
-  text-align: right;
-  font-size: 11px;
-  color: rgba(180, 180, 180, 0.5);
-  line-height: 1.8;
+/* フェーズ移行テキスト */
+.phase-transition-text {
+  margin-top: 8px;
+  font-size: 15px;
+  font-weight: bold;
+  letter-spacing: 5px;
+  color: #ff4400;
+  text-shadow: 0 0 15px #ff2200, 0 0 30px #ff0000;
+  animation: phase-text-in 0.3s ease-out;
 }
 
-.hud-hint {
-  color: rgba(0, 200, 200, 0.6);
-  margin-top: 4px;
+@keyframes phase-text-in {
+  from { opacity: 0; transform: scale(1.4); }
+  to   { opacity: 1; transform: scale(1); }
 }
 
 /* ============ オーバーレイ共通 ============ */
@@ -284,11 +294,29 @@ body {
 
 .title-controls {
   font-size: 13px;
-  color: rgba(200, 200, 200, 0.7);
-  line-height: 2;
+  color: rgba(200, 200, 200, 0.8);
+  line-height: 2.1;
   border: 1px solid rgba(150, 80, 30, 0.3);
   padding: 14px 24px;
   letter-spacing: 1px;
+  text-align: left;
+}
+
+.key-hint {
+  display: inline-block;
+  color: #ffcc66;
+  background: rgba(255, 180, 0, 0.1);
+  border: 1px solid rgba(255, 180, 0, 0.35);
+  border-radius: 3px;
+  padding: 0 5px;
+  font-size: 12px;
+  margin-right: 4px;
+  text-shadow: 0 0 6px rgba(255, 180, 0, 0.5);
+}
+
+.cost-hint {
+  font-size: 11px;
+  color: rgba(150, 150, 150, 0.6);
 }
 
 /* You Died */

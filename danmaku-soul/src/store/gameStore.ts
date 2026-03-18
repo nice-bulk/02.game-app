@@ -72,10 +72,13 @@ const initialPlayer = (): Player => ({
 
 const initialBoss = (): Boss => ({
   pos: { x: CANVAS_WIDTH / 2, y: 160 },
+  vel: { x: 0.8, y: 0.3 },
+  moveDirTimer: 0,
   radius: BOSS_RADIUS,
   hp: BOSS_MAX_HP,
   maxHp: BOSS_MAX_HP,
   phase: 1,
+  lastPhase: 1,
   poise: BOSS_MAX_POISE,
   maxPoise: BOSS_MAX_POISE,
   poiseRecoverTimer: 0,
@@ -87,6 +90,7 @@ const initialBoss = (): Boss => ({
   bombTelegraphActive: false,
   bombTelegraphTimer: 0,
   hitFlash: 0,
+  phaseTransitionTimer: 0,
 });
 
 let _bulletId = 0;

@@ -32,6 +32,8 @@ export interface Player {
 
 export interface Boss {
   pos: Vec2;
+  vel: Vec2;           // 移動速度ベクトル（新規）
+  moveDirTimer: number; // 移動方向変更タイマー（新規）
   radius: number;
   hp: number;
   maxHp: number;
@@ -47,10 +49,16 @@ export interface Boss {
   bombTelegraphActive: boolean; // ボム予兆
   bombTelegraphTimer: number;
   hitFlash: number;
+  // フェーズ移行演出
+  phaseTransitionTimer: number;
+  lastPhase: number;
 }
 
 // ボム = パリィ可能な巨大弾
 export type BulletType = 'normal' | 'bomb';
+
+// 弾幕パターン種別
+export type DanmakuPattern = 'radial' | 'spiral' | 'aimed' | 'burst' | 'cross';
 
 export interface Bullet {
   id: number;

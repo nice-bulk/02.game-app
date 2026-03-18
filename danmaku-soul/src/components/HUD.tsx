@@ -11,6 +11,7 @@ export function HUD() {
 
   const canHeal = player.stack >= HEAL_STACK_COST && player.hp < player.maxHp;
   const canUlt  = player.stack >= ULT_STACK_COST;
+  const isTransitioning = boss.phaseTransitionTimer > 0;
 
   return (
     <div className="hud">
@@ -41,8 +42,8 @@ export function HUD() {
         <div className="stack-row">
           {Array.from({ length: player.maxStack }, (_, i) => {
             const filled = i < player.stack;
-            const isUltSlot = i >= ULT_STACK_COST - 1;   // 4スタック目以降を色分け
-            const isHealSlot = i >= HEAL_STACK_COST - 1;  // 2スタック目以降
+            const isUltSlot = i >= ULT_STACK_COST - 1;
+            const isHealSlot = i >= HEAL_STACK_COST - 1;
             let slotClass = 'stack-slot';
             if (filled) {
               if (isUltSlot && i < player.stack) slotClass += ' stack-ult';
@@ -54,11 +55,11 @@ export function HUD() {
         </div>
         <div className="stack-label">
           <span className={canHeal ? 'stack-action-ready' : 'stack-action-dim'}>
-            SPACE: 回復 ({HEAL_STACK_COST}▲)
+            [SPACE] 回復
           </span>
           {' '}
           <span className={canUlt ? 'stack-action-ult' : 'stack-action-dim'}>
-            [MWheel]: 必殺 ({ULT_STACK_COST}▲)
+            [MW] 必殺
           </span>
         </div>
 
@@ -72,8 +73,12 @@ export function HUD() {
 
       {/* ============ ボスHPバー（上部中央） ============ */}
       <div className="hud-boss">
-        <div className="boss-name">
-          {boss.phase === 3 ? '⚡ ANCIENT SOUL ⚡' : boss.phase === 2 ? '💀 ANCIENT SOUL' : 'ANCIENT SOUL'}
+        <div className={`boss-name ${isTransitioning ? 'boss-name-flash' : ''}`}>
+          {boss.phase === 3
+            ? '⚡ ANCIENT SOUL ⚡'
+            : boss.phase === 2
+            ? '💀 ANCIENT SOUL'
+            : 'ANCIENT SOUL'}
         </div>
         <div className="boss-hp-bar-wrap">
           <div
@@ -87,16 +92,12 @@ export function HUD() {
           <div className="boss-hp-phase-mark" style={{ left: '30%' }} />
           <div className="boss-hp-phase-mark" style={{ left: '60%' }} />
         </div>
-      </div>
-
-      {/* ============ 操作説明（右下） ============ */}
-      <div className="hud-controls">
-        <div>WASD : 移動</div>
-        <div>左クリック長押し : ビーム攻撃</div>
-        <div>右クリック : パリィ（ボムに）</div>
-        <div>SPACE : HP回復（{HEAL_STACK_COST}スタック）</div>
-        <div>ホイールクリック : 必殺技（{ULT_STACK_COST}スタック）</div>
-        <div className="hud-hint">パリィ成功でスタック＋1！</div>
+        {/* フェーズ移行テキスト */}
+        {isTransitioning && boss.phase > 1 && (
+          <div className="phase-transition-text">
+            {boss.phase === 3 ? '— FINAL PHASE —' : '— PHASE 2 —'}
+          </div>
+        )}
       </div>
     </div>
   );

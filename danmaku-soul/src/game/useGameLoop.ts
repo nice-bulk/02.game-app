@@ -9,13 +9,21 @@ import {
   BEAM_DAMAGE_INTERVAL, BEAM_DAMAGE, BEAM_LIFE,
   ULT_DURATION, ULT_DAMAGE_MULTIPLIER, ULT_BEAM_INTERVAL,
   HEAL_STACK_COST, ULT_STACK_COST,
-  BULLET_RADIUS, BOMB_RADIUS, BOMB_SPEED, PARRY_WINDOW, BOMB_DAMAGE,
+  BOMB_DAMAGE,
   BOMB_INTERVAL_P1, BOMB_INTERVAL_P2, BOMB_INTERVAL_P3,
   SHOOT_INTERVAL_P1, SHOOT_INTERVAL_P2, SHOOT_INTERVAL_P3,
   HITSTOP_PARRY, HITSTOP_HIT,
   BOSS_POISE_RECOVER_TIME, BOSS_STUN_DURATION, BOSS_MAX_POISE,
-  PHASE2_THRESHOLD, PHASE3_THRESHOLD,
+  PHASE2_THRESHOLD, PHASE3_THRESHOLD, PHASE_TRANSITION_DURATION,
+  BOSS_MOVE_SPEED_P1, BOSS_MOVE_SPEED_P2, BOSS_MOVE_SPEED_P3,
+  BOSS_MOVE_CHANGE_INTERVAL, BOSS_MARGIN,
 } from './constants';
+import { generateDanmaku, generateBomb } from './danmaku';
+import {
+  playBeamSound, playHitSound, playParrySound, playStunSound,
+  playBombHitSound, playBossHitSound, playUltSound, playHealSound,
+  playReflexSound, playPhaseTransitionSound, playShootSound, playBombLaunchSound,
+} from './audio';
 
 // パリィ成功後の無敵フレーム（2秒 = 120f）
 const PARRY_INVINCIBLE_FRAMES = 120;
@@ -59,44 +67,6 @@ function makeParticles(
   });
 }
 
-function generateDanmaku(boss: Boss, nextId: () => number, frame: number): Bullet[] {
-  const bullets: Bullet[] = [];
-  const phase = boss.phase;
-  let count = 12;
-  let speed = 1.8;
-  let rotSpeed = 0.01;
-  if (phase === 2) { count = 16; speed = 2.4; rotSpeed = 0.02; }
-  if (phase === 3) { count = 20; speed = rand(2.5, 3.2); rotSpeed = 0.03; }
-
-  for (let i = 0; i < count; i++) {
-    const angle = (Math.PI * 2 / count) * i + frame * rotSpeed;
-    const s = phase === 3 ? rand(2.2, 3.2) : speed;
-    bullets.push({
-      id: nextId(),
-      pos: { x: boss.pos.x, y: boss.pos.y },
-      vel: { x: Math.cos(angle) * s, y: Math.sin(angle) * s },
-      radius: BULLET_RADIUS,
-      type: 'normal',
-      fromBoss: true,
-      parryWindowTimer: 0,
-    });
-  }
-  return bullets;
-}
-
-function generateBomb(boss: Boss, playerPos: { x: number; y: number }, nextId: () => number): Bullet {
-  const dir = normalize(playerPos.x - boss.pos.x, playerPos.y - boss.pos.y);
-  return {
-    id: nextId(),
-    pos: { x: boss.pos.x, y: boss.pos.y },
-    vel: { x: dir.x * BOMB_SPEED, y: dir.y * BOMB_SPEED },
-    radius: BOMB_RADIUS,
-    type: 'bomb',
-    fromBoss: true,
-    parryWindowTimer: PARRY_WINDOW,
-  };
-}
-
 function getShootInterval(phase: number): number {
   if (phase === 1) return SHOOT_INTERVAL_P1;
   if (phase === 2) return SHOOT_INTERVAL_P2;
@@ -109,17 +79,19 @@ function getBombInterval(phase: number): number {
   return BOMB_INTERVAL_P3;
 }
 
+function getBossMoveSpeed(phase: number): number {
+  if (phase === 1) return BOSS_MOVE_SPEED_P1;
+  if (phase === 2) return BOSS_MOVE_SPEED_P2;
+  return BOSS_MOVE_SPEED_P3;
+}
+
 export function useGameLoop(canvasRef: React.RefObject<HTMLCanvasElement | null>) {
   const store = useGameStore;
   const frameRef = useRef(0);
   const staminaRegenDelayRef = useRef(0);
-
-  // ビームタイマー（Ref管理 = 毎フレーム確実にカウント）
   const beamTimerRef = useRef(0);
-
-  // パリィ有効フレーム（Ref管理 = Zustandスナップショットに依存しない）
   const parryFramesRef = useRef(0);
-
+  const shotCountRef = useRef(0); // 弾幕パターンローテーション用
   const rafRef = useRef<number>(0);
 
   useEffect(() => {
@@ -171,7 +143,7 @@ export function useGameLoop(canvasRef: React.RefObject<HTMLCanvasElement | null>
       if (e.button === 0) inp.beamFire = true;
       if (e.button === 2) {
         inp.parry = true;
-        parryFramesRef.current = 8; // 8フレーム以内（厳しめ）
+        parryFramesRef.current = 8;
       }
       if (e.button === 1) inp.ultimate = true;
       s.setInput(inp);
@@ -202,15 +174,12 @@ export function useGameLoop(canvasRef: React.RefObject<HTMLCanvasElement | null>
     const loop = () => {
       rafRef.current = requestAnimationFrame(loop);
 
-      // phase チェックは毎フレーム最新を取る
       if (store.getState().phase !== 'playing') return;
 
-      // ---- パリィフレームは毎フレーム必ずカウントダウン（ヒットストップ中も）----
       if (parryFramesRef.current > 0) {
         parryFramesRef.current--;
       }
 
-      // ---- ヒットストップ判定 ----
       if (store.getState().tickHitstop()) return;
 
       frameRef.current++;
@@ -218,18 +187,16 @@ export function useGameLoop(canvasRef: React.RefObject<HTMLCanvasElement | null>
 
       // ================================================================
       // ビーム攻撃
-      // 毎フレーム最新の state を取得して判定（スナップショット汚染を排除）
       // ================================================================
       {
         const { input: bi, player: bp } = store.getState();
         const beamInterval = bp.ultActive ? ULT_BEAM_INTERVAL : BEAM_DAMAGE_INTERVAL;
 
         if (bi.beamFire) {
-          // 押している → タイマーを進める（スタミナ不要）
           beamTimerRef.current++;
 
           if (beamTimerRef.current >= beamInterval) {
-            beamTimerRef.current = 0; // インターバルごとにリセットして継続発射
+            beamTimerRef.current = 0;
 
             const boss = store.getState().boss;
             const beamDir = normalize(bi.mouseX - bp.pos.x, bi.mouseY - bp.pos.y);
@@ -246,12 +213,15 @@ export function useGameLoop(canvasRef: React.RefObject<HTMLCanvasElement | null>
                 if (newHp <= 0) store.getState().setPhase('victory');
                 return { ...b, hp: newHp, hitFlash: 4 };
               });
+              playBossHitSound();
               if (bp.ultActive) {
                 store.getState().addParticles(
                   makeParticles(store.getState().nextParticleId, boss.pos.x, boss.pos.y, 3, 4, 15, '#ffcc00')
                 );
               }
             }
+
+            playBeamSound(bp.ultActive);
 
             const beam: Beam = {
               id: store.getState().nextBeamId(),
@@ -265,7 +235,6 @@ export function useGameLoop(canvasRef: React.RefObject<HTMLCanvasElement | null>
             store.getState().setBeams((prev) => [...prev, beam]);
           }
         } else {
-          // 離した → タイマーリセット（次に押した瞬間すぐ発射）
           beamTimerRef.current = 0;
         }
       }
@@ -321,6 +290,7 @@ export function useGameLoop(canvasRef: React.RefObject<HTMLCanvasElement | null>
             // Space: HP回復
             if (freshInput.roll && p.stack >= HEAL_STACK_COST && p.hp < p.maxHp) {
               store.getState().setInput({ ...freshInput, roll: false });
+              playHealSound();
               return {
                 ...p,
                 hp: Math.min(p.maxHp, p.hp + 1),
@@ -329,8 +299,6 @@ export function useGameLoop(canvasRef: React.RefObject<HTMLCanvasElement | null>
                 reflexFlash: 15,
               };
             }
-
-            // ビームはスタミナ消費なし
           }
 
           if (staminaRegenDelayRef.current > 0) {
@@ -375,17 +343,16 @@ export function useGameLoop(canvasRef: React.RefObject<HTMLCanvasElement | null>
             ultActive: true,
             ultTimer: ULT_DURATION,
           }));
-          // ボスに特大ダメージ（即時100ダメ）
           store.getState().setBoss((b: Boss) => {
             const newHp = Math.max(0, b.hp - 100);
             if (newHp <= 0) store.getState().setPhase('victory');
             return { ...b, hp: newHp, hitFlash: 30, stunTimer: 30 };
           });
+          playUltSound();
           store.getState().addScreenShake(12, 40);
           store.getState().addParticles(
             makeParticles(store.getState().nextParticleId, pl.pos.x, pl.pos.y, 30, 8, 70, '#ffcc00')
           );
-          // ボス座標にも爆発エフェクト
           const bossPos = store.getState().boss.pos;
           store.getState().addParticles(
             makeParticles(store.getState().nextParticleId, bossPos.x, bossPos.y, 30, 7, 60, '#ff8800')
@@ -394,15 +361,71 @@ export function useGameLoop(canvasRef: React.RefObject<HTMLCanvasElement | null>
       }
 
       // ================================================================
-      // ボス更新
+      // ボス更新（移動 + 弾幕 + フェーズ演出）
       // ================================================================
       store.getState().setBoss((b: Boss) => {
+        // スタン中は移動停止
         if (b.stunTimer > 0) {
-          return { ...b, stunTimer: b.stunTimer - 1, hitFlash: Math.max(0, b.hitFlash - 1) };
+          return {
+            ...b,
+            stunTimer: b.stunTimer - 1,
+            hitFlash: Math.max(0, b.hitFlash - 1),
+            phaseTransitionTimer: Math.max(0, b.phaseTransitionTimer - 1),
+          };
         }
 
-        const shootInterval = getShootInterval(b.phase);
-        const bombInterval  = getBombInterval(b.phase);
+        // ---- フェーズ判定 ----
+        const hpRatio = b.hp / b.maxHp;
+        let phase = 1;
+        if (hpRatio <= PHASE3_THRESHOLD) phase = 3;
+        else if (hpRatio <= PHASE2_THRESHOLD) phase = 2;
+
+        let newPhaseTransitionTimer = b.phaseTransitionTimer > 0 ? b.phaseTransitionTimer - 1 : 0;
+        let newLastPhase = b.lastPhase;
+
+        // フェーズが上がったとき演出トリガー
+        if (phase > b.lastPhase) {
+          newPhaseTransitionTimer = PHASE_TRANSITION_DURATION;
+          newLastPhase = phase;
+          // 効果音は setBoss 外で呼べないので後で別途フラグ経由で対応
+          // ここでは store 呼び出し禁止のため副作用は後処理に任せる
+        }
+
+        // ---- ボス移動 ----
+        const moveSpeed = getBossMoveSpeed(phase);
+        let { vel } = b;
+        let newMoveDirTimer = b.moveDirTimer + 1;
+
+        if (newMoveDirTimer >= BOSS_MOVE_CHANGE_INTERVAL) {
+          newMoveDirTimer = 0;
+          // 新しいランダム方向
+          const angle = rand(0, Math.PI * 2);
+          vel = { x: Math.cos(angle) * moveSpeed, y: Math.sin(angle) * moveSpeed };
+        }
+
+        // フェーズ変更時に加速
+        if (phase > b.phase) {
+          const angle = rand(0, Math.PI * 2);
+          vel = { x: Math.cos(angle) * moveSpeed, y: Math.sin(angle) * moveSpeed };
+        }
+
+        let nx = b.pos.x + vel.x;
+        let ny = b.pos.y + vel.y;
+
+        // 壁反射
+        const topBound = BOSS_MARGIN;
+        const bottomBound = CANVAS_HEIGHT / 2; // 上半分のみ移動
+        const leftBound = BOSS_MARGIN;
+        const rightBound = CANVAS_WIDTH - BOSS_MARGIN;
+
+        if (nx < leftBound)  { nx = leftBound;  vel = { ...vel, x:  Math.abs(vel.x) }; }
+        if (nx > rightBound) { nx = rightBound; vel = { ...vel, x: -Math.abs(vel.x) }; }
+        if (ny < topBound)   { ny = topBound;   vel = { ...vel, y:  Math.abs(vel.y) }; }
+        if (ny > bottomBound){ ny = bottomBound; vel = { ...vel, y: -Math.abs(vel.y) }; }
+
+        // ---- 弾幕タイマー ----
+        const shootInterval = getShootInterval(phase);
+        const bombInterval  = getBombInterval(phase);
         let newShootTimer = b.shootTimer + 1;
         let newBombTimer  = b.bombTimer  + 1;
 
@@ -423,19 +446,34 @@ export function useGameLoop(canvasRef: React.RefObject<HTMLCanvasElement | null>
         if (newShootTimer >= shootInterval) {
           newShootTimer = 0;
           newTelegraphActive = false;
-          const danmaku = generateDanmaku(b, store.getState().nextBulletId, frame);
+          const playerPos = store.getState().player.pos;
+          const danmaku = generateDanmaku(
+            { ...b, pos: { x: nx, y: ny } },
+            store.getState().nextBulletId,
+            frame,
+            shotCountRef.current,
+            playerPos,
+          );
+          shotCountRef.current++;
           store.getState().setBullets((prev) => [...prev, ...danmaku]);
           store.getState().addScreenShake(1.5, 6);
+          playShootSound(phase);
         }
 
         if (newBombTimer >= bombInterval) {
           newBombTimer = 0;
           newBombTelegraphActive = false;
-          const bomb = generateBomb(b, store.getState().player.pos, store.getState().nextBulletId);
+          const bomb = generateBomb(
+            { ...b, pos: { x: nx, y: ny } },
+            store.getState().player.pos,
+            store.getState().nextBulletId,
+          );
           store.getState().setBullets((prev) => [...prev, bomb]);
           store.getState().addScreenShake(3, 12);
+          playBombLaunchSound();
         }
 
+        // ---- ポイズ回復 ----
         let newPoise = b.poise;
         let newPoiseRecoverTimer = b.poiseRecoverTimer;
         if (newPoise < b.maxPoise) {
@@ -446,13 +484,11 @@ export function useGameLoop(canvasRef: React.RefObject<HTMLCanvasElement | null>
           }
         }
 
-        const hpRatio = b.hp / b.maxHp;
-        let phase = 1;
-        if (hpRatio <= PHASE3_THRESHOLD) phase = 3;
-        else if (hpRatio <= PHASE2_THRESHOLD) phase = 2;
-
         return {
           ...b,
+          pos: { x: nx, y: ny },
+          vel,
+          moveDirTimer: newMoveDirTimer,
           shootTimer: newShootTimer,
           bombTimer:  newBombTimer,
           telegraphTimer:       newTelegraphTimer,
@@ -462,9 +498,28 @@ export function useGameLoop(canvasRef: React.RefObject<HTMLCanvasElement | null>
           poise: newPoise,
           poiseRecoverTimer: newPoiseRecoverTimer,
           phase,
+          lastPhase: newLastPhase,
+          phaseTransitionTimer: newPhaseTransitionTimer,
           hitFlash: Math.max(0, b.hitFlash - 1),
         };
       });
+
+      // フェーズ移行音（setBossの外でstateを読んで判定）
+      {
+        const boss = store.getState().boss;
+        if (boss.phaseTransitionTimer === PHASE_TRANSITION_DURATION - 1) {
+          playPhaseTransitionSound(boss.phase);
+          store.getState().addScreenShake(8, 30);
+          store.getState().addParticles(
+            makeParticles(
+              store.getState().nextParticleId,
+              boss.pos.x, boss.pos.y,
+              40, 10, 80,
+              boss.phase === 3 ? '#ff2200' : '#ff6600',
+            )
+          );
+        }
+      }
 
       // ================================================================
       // 弾移動
@@ -489,13 +544,11 @@ export function useGameLoop(canvasRef: React.RefObject<HTMLCanvasElement | null>
       const { player: pl, bullets } = store.getState();
       const parryActive = parryFramesRef.current > 0;
       const bulletsToRemove = new Set<number>();
-
-      // パリィ成功フラグ（同フレーム内の被弾を防ぐため）
       let parriedThisFrame = false;
 
       for (const bullet of bullets) {
         if (!bullet.fromBoss) continue;
-        if (bulletsToRemove.has(bullet.id)) continue; // 削除済みはスキップ
+        if (bulletsToRemove.has(bullet.id)) continue;
 
         const d = dist(pl.pos, bullet.pos);
         const hitRange = pl.radius + bullet.radius;
@@ -510,15 +563,11 @@ export function useGameLoop(canvasRef: React.RefObject<HTMLCanvasElement | null>
           store.getState().addParticles(
             makeParticles(store.getState().nextParticleId, pl.pos.x, pl.pos.y, 8, 3, 30, '#00ffff')
           );
+          playReflexSound();
         }
 
-        // ----------------------------------------------------------------
         // パリィ判定（ボムのみ）
-        // 条件: 右クリックから8フレーム以内 & プレイヤーとボムが近い（距離制限あり）
-        // 跳ね返しなし → ボムを消してスタック+1 & 2秒無敵
-        // ----------------------------------------------------------------
         if (bullet.type === 'bomb' && bullet.parryWindowTimer > 0 && parryActive && !parriedThisFrame) {
-          // 距離チェック（プレイヤー半径 + ボム半径 + 50px以内）
           const parryRange = pl.radius + bullet.radius + 50;
           if (d < parryRange) {
             bulletsToRemove.add(bullet.id);
@@ -530,8 +579,8 @@ export function useGameLoop(canvasRef: React.RefObject<HTMLCanvasElement | null>
             );
             store.getState().setHitstop(HITSTOP_PARRY);
             store.getState().addScreenShake(5, 18);
+            playParrySound();
 
-            // スタック +1 & パリィ後2秒無敵
             store.getState().setPlayer((p: Player) => ({
               ...p,
               stack: Math.min(p.maxStack, p.stack + 1),
@@ -547,6 +596,7 @@ export function useGameLoop(canvasRef: React.RefObject<HTMLCanvasElement | null>
                 store.getState().addParticles(
                   makeParticles(store.getState().nextParticleId, b.pos.x, b.pos.y, 25, 7, 70, '#ff8800')
                 );
+                playStunSound();
                 return {
                   ...b, poise: BOSS_MAX_POISE, poiseRecoverTimer: 0,
                   stunTimer: BOSS_STUN_DURATION, hitFlash: 40,
@@ -559,10 +609,7 @@ export function useGameLoop(canvasRef: React.RefObject<HTMLCanvasElement | null>
           }
         }
 
-        // ----------------------------------------------------------------
         // 被弾判定
-        // invincible は setPlayer で更新済みの最新値を取得
-        // ----------------------------------------------------------------
         const currentInvincible = parriedThisFrame || store.getState().player.invincible;
         if (d < hitRange && !currentInvincible) {
           bulletsToRemove.add(bullet.id);
@@ -583,6 +630,11 @@ export function useGameLoop(canvasRef: React.RefObject<HTMLCanvasElement | null>
           store.getState().addParticles(
             makeParticles(store.getState().nextParticleId, pl.pos.x, pl.pos.y, 12, 5, 40, '#ff4444')
           );
+          if (bullet.type === 'bomb') {
+            playBombHitSound();
+          } else {
+            playHitSound();
+          }
         }
       }
 
@@ -590,7 +642,7 @@ export function useGameLoop(canvasRef: React.RefObject<HTMLCanvasElement | null>
         store.getState().setBullets((prev) => prev.filter((b) => !bulletsToRemove.has(b.id)));
       }
 
-      // 被弾後無敵終了（rollTimerをカウントダウン）
+      // 被弾後無敵終了
       store.getState().setPlayer((p: Player) => {
         if (p.invincible && !p.isRolling && p.rollTimer > 0) {
           const newTimer = p.rollTimer - 1;
