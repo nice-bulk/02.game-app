@@ -21,63 +21,38 @@ let bgmSchedulerTimer: ReturnType<typeof setTimeout> | null = null;
 let bgmPhase = 1;
 let bgmPlaying = false;
 
-// ---- BPM・テンポ ----
-// Phase1=120, Phase2=138, Phase3=158（Undertaleは大体120前後）
+// ---- BPM（フェーズ別）----
 function getBpm(): number {
-  if (bgmPhase === 3) return 158;
-  if (bgmPhase === 2) return 138;
-  return 120;
+  if (bgmPhase === 3) return 178;
+  if (bgmPhase === 2) return 160;
+  return 145;
 }
-// 4分音符1個の秒数
 function getBeatSec(): number { return 60 / getBpm(); }
 
 // ============================================================
-// Undertale風ピアノ音色（triangle波 + 短いADSR + ローパス）
+// 戦闘BGM 音色（攻撃的・緊張感）
 // ============================================================
-function schedulePiano(time: number, freq: number, dur: number, vol = 0.28) {
+
+// のこぎり波リード（攻撃的なメロディ用）
+function scheduleLead(time: number, freq: number, dur: number, vol = 0.18) {
   if (freq === 0) return;
   try {
-    const ac = getCtx();
+    const ac   = getCtx();
     const osc  = ac.createOscillator();
     const gain = ac.createGain();
     const lp   = ac.createBiquadFilter();
     lp.type = 'lowpass';
-    lp.frequency.value = 2200;
-    lp.Q.value = 0.5;
+    lp.frequency.value = bgmPhase === 3 ? 3500 : 2800;
+    lp.Q.value = 1.5;
 
-    osc.type = 'triangle';
+    osc.type = 'sawtooth';
     osc.frequency.setValueAtTime(freq, time);
 
-    // ピアノ的ADSR: 瞬間アタック・緩やかなディケイ・短いリリース
+    // 鋭いアタック・短いディケイ
     gain.gain.setValueAtTime(0.001, time);
-    gain.gain.linearRampToValueAtTime(vol, time + 0.008);
-    gain.gain.exponentialRampToValueAtTime(vol * 0.6, time + dur * 0.3);
-    gain.gain.exponentialRampToValueAtTime(0.001, time + dur);
-
-    osc.connect(gain);
-    gain.connect(lp);
-    lp.connect(bgmMasterGain!);
-    osc.start(time);
-    osc.stop(time + dur + 0.02);
-  } catch { /* ignore */ }
-}
-
-// 8bit風スクエア波ベース
-function scheduleSqBass(time: number, freq: number, dur: number, vol = 0.22) {
-  if (freq === 0) return;
-  try {
-    const ac = getCtx();
-    const osc  = ac.createOscillator();
-    const gain = ac.createGain();
-    const lp   = ac.createBiquadFilter();
-    lp.type = 'lowpass';
-    lp.frequency.value = 600;
-
-    osc.type = 'square';
-    osc.frequency.setValueAtTime(freq, time);
-
-    gain.gain.setValueAtTime(vol, time);
-    gain.gain.exponentialRampToValueAtTime(0.001, time + dur * 0.9);
+    gain.gain.linearRampToValueAtTime(vol, time + 0.005);
+    gain.gain.exponentialRampToValueAtTime(vol * 0.7, time + dur * 0.2);
+    gain.gain.exponentialRampToValueAtTime(0.001, time + dur * 0.85);
 
     osc.connect(gain);
     gain.connect(lp);
@@ -87,35 +62,106 @@ function scheduleSqBass(time: number, freq: number, dur: number, vol = 0.22) {
   } catch { /* ignore */ }
 }
 
-// 控えめなバスドラム
-function scheduleKick(time: number, vol = 0.45) {
+// 歪んだ8bitベース（square波 + 矩形波歪み風）
+function scheduleBattleBass(time: number, freq: number, dur: number, vol = 0.35) {
+  if (freq === 0) return;
+  try {
+    const ac   = getCtx();
+    // 1オクターブ下と合わせて重厚に
+    for (const [f, v] of [[freq, vol], [freq * 0.5, vol * 0.5]] as [number, number][]) {
+      const osc  = ac.createOscillator();
+      const gain = ac.createGain();
+      const lp   = ac.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = 500;
+
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(f, time);
+
+      gain.gain.setValueAtTime(v, time);
+      gain.gain.exponentialRampToValueAtTime(v * 0.6, time + dur * 0.5);
+      gain.gain.exponentialRampToValueAtTime(0.001, time + dur * 0.85);
+
+      osc.connect(gain);
+      gain.connect(lp);
+      lp.connect(bgmMasterGain!);
+      osc.start(time);
+      osc.stop(time + dur);
+    }
+  } catch { /* ignore */ }
+}
+
+// 重いキック
+function scheduleKick(time: number, vol = 0.8) {
   try {
     const ac  = getCtx();
     const osc = ac.createOscillator();
     const g   = ac.createGain();
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(90, time);
-    osc.frequency.exponentialRampToValueAtTime(35, time + 0.07);
+    osc.frequency.setValueAtTime(180, time);
+    osc.frequency.exponentialRampToValueAtTime(40, time + 0.09);
     g.gain.setValueAtTime(vol, time);
-    g.gain.exponentialRampToValueAtTime(0.001, time + 0.18);
+    g.gain.exponentialRampToValueAtTime(0.001, time + 0.22);
     osc.connect(g); g.connect(bgmMasterGain!);
-    osc.start(time); osc.stop(time + 0.18);
+    osc.start(time); osc.stop(time + 0.22);
+
+    // クリック成分
+    const bufLen = Math.ceil(ac.sampleRate * 0.01);
+    const buf    = ac.createBuffer(1, bufLen, ac.sampleRate);
+    const d      = buf.getChannelData(0);
+    for (let i = 0; i < bufLen; i++) d[i] = Math.random() * 2 - 1;
+    const ns = ac.createBufferSource(); ns.buffer = buf;
+    const ng = ac.createGain();
+    ng.gain.setValueAtTime(0.5, time);
+    ng.gain.exponentialRampToValueAtTime(0.001, time + 0.01);
+    ns.connect(ng); ng.connect(bgmMasterGain!);
+    ns.start(time);
   } catch { /* ignore */ }
 }
 
-// 控えめなスネア（ノイズのみ、短め）
-function scheduleSnare(time: number, vol = 0.12) {
+// パワースネア
+function scheduleSnare(time: number, vol = 0.35) {
   try {
     const ac     = getCtx();
-    const dur    = 0.08;
+    const dur    = 0.15;
     const bufLen = Math.ceil(ac.sampleRate * dur);
     const buf    = ac.createBuffer(1, bufLen, ac.sampleRate);
     const d      = buf.getChannelData(0);
     for (let i = 0; i < bufLen; i++) d[i] = Math.random() * 2 - 1;
-    const ns = ac.createBufferSource();
-    ns.buffer = buf;
+    const ns = ac.createBufferSource(); ns.buffer = buf;
     const hp = ac.createBiquadFilter();
-    hp.type = 'highpass'; hp.frequency.value = 2000;
+    hp.type = 'highpass'; hp.frequency.value = 1500;
+    const g = ac.createGain();
+    g.gain.setValueAtTime(vol, time);
+    g.gain.exponentialRampToValueAtTime(0.001, time + dur);
+    ns.connect(hp); hp.connect(g); g.connect(bgmMasterGain!);
+    ns.start(time);
+
+    // スネアのトーン
+    const osc = ac.createOscillator();
+    const og  = ac.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(250, time);
+    osc.frequency.exponentialRampToValueAtTime(180, time + 0.05);
+    og.gain.setValueAtTime(vol * 0.5, time);
+    og.gain.exponentialRampToValueAtTime(0.001, time + 0.08);
+    osc.connect(og); og.connect(bgmMasterGain!);
+    osc.start(time); osc.stop(time + 0.08);
+  } catch { /* ignore */ }
+}
+
+// ハイハット
+function scheduleHihat(time: number, vol = 0.12) {
+  try {
+    const ac     = getCtx();
+    const dur    = 0.04;
+    const bufLen = Math.ceil(ac.sampleRate * dur);
+    const buf    = ac.createBuffer(1, bufLen, ac.sampleRate);
+    const d      = buf.getChannelData(0);
+    for (let i = 0; i < bufLen; i++) d[i] = Math.random() * 2 - 1;
+    const ns = ac.createBufferSource(); ns.buffer = buf;
+    const hp = ac.createBiquadFilter();
+    hp.type = 'highpass'; hp.frequency.value = 8000;
     const g = ac.createGain();
     g.gain.setValueAtTime(vol, time);
     g.gain.exponentialRampToValueAtTime(0.001, time + dur);
@@ -125,120 +171,126 @@ function scheduleSnare(time: number, vol = 0.12) {
 }
 
 // ============================================================
-// 楽曲データ（Undertale風Aマイナー）
-// 4分音符単位で書く。0=休符。各配列は1小節(4拍)
+// 戦闘楽曲データ（Aマイナー・高速・緊張感）
+// 4分音符単位。0=休符。各配列は1小節(4拍)
+// コード進行: Am - Dm - Em - Am の8小節ループ（2周で1サイクル）
 // ============================================================
 
-// --- Phase1: 静かで不穏な旋律 ---
-// コード進行: Am - F - C - G の4小節ループ
-const PHRASE_P1_MELODY: [number, number][][] = [
-  // 小節1: Am (A4=440, C5=523, E5=659)
-  [[440,1],[0,0.5],[523,0.5],[440,1],[0,1]],
-  // 小節2: F  (F4=349, A4=440, C5=523)
-  [[349,0.5],[440,0.5],[523,1],[440,0.5],[349,1.5]],
-  // 小節3: C  (C4=262, E4=330, G4=392)
-  [[392,1],[330,0.5],[0,0.5],[392,0.5],[440,1.5]],
-  // 小節4: G  (G4=392, B4=494, D5=587)
-  [[494,1],[440,0.5],[392,0.5],[330,2]],
+// --- Phase1 (145BPM): 不穏・緊張 ---
+const BATTLE_P1_MELODY: [number, number][][] = [
+  // Am: 跳躍するリフ
+  [[440,0.5],[0,0.25],[523,0.25],[440,0.5],[392,0.5],[440,1],[0,1]],
+  // Dm: 下降フレーズ
+  [[587,0.5],[523,0.5],[494,0.5],[440,0.5],[392,1],[330,1]],
+  // Em: 緊張の上昇
+  [[330,0.5],[392,0.5],[440,0.5],[494,0.5],[523,1],[0,1]],
+  // Am解決
+  [[440,0.75],[494,0.25],[440,0.5],[392,0.5],[330,2]],
 ];
-const PHRASE_P1_BASS: [number, number][][] = [
-  [[110,2],[110,1],[0,1]],   // Am
-  [[87.3,2],[87.3,2]],       // F
-  [[130.8,2],[130.8,2]],     // C
-  [[98,2],[98,1],[0,1]],     // G
+const BATTLE_P1_BASS: [number, number][][] = [
+  [[110,0.5],[110,0.5],[110,0.5],[0,0.5],[110,2]],   // Am
+  [[146.8,0.5],[146.8,0.5],[0,0.5],[146.8,0.5],[146.8,2]], // Dm
+  [[164.8,0.5],[164.8,0.5],[164.8,0.5],[0,0.5],[164.8,2]], // Em
+  [[110,0.5],[110,0.5],[0,0.5],[165,0.5],[110,2]],    // Am
 ];
-// kick: 1・3拍, snare: 2・4拍
-const BEAT_P1 = [[1,0,0,0],[0,1,0,0],[1,0,0,0],[0,1,0,0]]; // [kick,snare] per beat
-
-// --- Phase2: テンポアップ、メロディが動く ---
-const PHRASE_P2_MELODY: [number, number][][] = [
-  [[440,0.5],[494,0.5],[523,1],[494,0.5],[440,1.5]],
-  [[349,0.5],[392,0.5],[440,1],[349,0.5],[0,1.5]],
-  [[392,0.5],[440,0.5],[494,0.5],[523,0.5],[494,1],[440,1]],
-  [[494,0.5],[440,0.5],[392,0.5],[330,0.5],[294,2]],
-];
-const PHRASE_P2_BASS: [number, number][][] = [
-  [[110,1],[110,1],[165,1],[0,1]],
-  [[87.3,1],[87.3,1],[131,2]],
-  [[130.8,1],[130.8,1],[196,2]],
-  [[98,1],[98,1],[147,1],[0,1]],
+// ドラムパターン（[kick, snare, hihat] per 8分音符×8）
+const DRUM_P1 = [
+//  k  s  h  k  s  h  k  s
+  [1, 0, 1, 0, 1, 0, 1, 0], // kick
+  [0, 0, 0, 0, 1, 0, 0, 0], // snare
+  [1, 1, 1, 1, 1, 1, 1, 1], // hihat
 ];
 
-// --- Phase3: 緊張感の高い速い旋律 ---
-const PHRASE_P3_MELODY: [number, number][][] = [
-  [[440,0.5],[523,0.25],[494,0.25],[440,0.5],[392,0.5],[440,1],[0,1]],
-  [[349,0.5],[440,0.5],[494,0.5],[523,0.5],[440,1],[0,1]],
-  [[659,0.5],[587,0.5],[523,0.5],[494,0.5],[440,1],[392,1]],
-  [[494,0.25],[440,0.25],[392,0.5],[330,0.5],[294,0.5],[330,0.5],[440,1.5]],
+// --- Phase2 (160BPM): 激化・前進感 ---
+const BATTLE_P2_MELODY: [number, number][][] = [
+  [[440,0.25],[523,0.25],[494,0.25],[440,0.25],[523,0.5],[659,0.5],[523,1],[440,1]],
+  [[587,0.5],[523,0.25],[494,0.25],[587,0.5],[0,0.5],[494,1],[440,1]],
+  [[330,0.25],[392,0.25],[440,0.25],[494,0.25],[523,0.5],[659,0.5],[784,1],[0,1]],
+  [[880,0.5],[784,0.5],[659,0.5],[587,0.5],[523,0.5],[494,0.5],[440,1]],
 ];
-const PHRASE_P3_BASS: [number, number][][] = [
-  [[110,0.5],[110,0.5],[165,0.5],[110,0.5],[110,2]],
-  [[87.3,0.5],[87.3,0.5],[131,1],[87.3,2]],
-  [[130.8,0.5],[130.8,0.5],[196,1],[130.8,2]],
-  [[98,0.5],[98,0.5],[147,0.5],[98,0.5],[98,2]],
+const BATTLE_P2_BASS: [number, number][][] = [
+  [[110,0.25],[110,0.25],[165,0.25],[110,0.25],[110,0.5],[110,0.5],[165,1],[110,1]],
+  [[146.8,0.5],[146.8,0.25],[0,0.25],[146.8,0.5],[220,0.5],[146.8,2]],
+  [[164.8,0.25],[164.8,0.25],[164.8,0.25],[0,0.25],[164.8,0.5],[247,0.5],[164.8,2]],
+  [[110,0.25],[110,0.25],[165,0.5],[110,0.5],[0,0.5],[110,2]],
+];
+const DRUM_P2 = [
+  [1, 0, 1, 1, 1, 0, 1, 1], // kick（シンコペ）
+  [0, 0, 0, 0, 1, 0, 0, 1], // snare
+  [1, 1, 1, 1, 1, 1, 1, 1], // hihat
 ];
 
-function getPhrase() {
-  if (bgmPhase === 3) return { mel: PHRASE_P3_MELODY, bass: PHRASE_P3_BASS };
-  if (bgmPhase === 2) return { mel: PHRASE_P2_MELODY, bass: PHRASE_P2_BASS };
-  return { mel: PHRASE_P1_MELODY, bass: PHRASE_P1_BASS };
+// --- Phase3 (178BPM): 最終決戦・全力 ---
+const BATTLE_P3_MELODY: [number, number][][] = [
+  [[440,0.25],[494,0.25],[523,0.25],[659,0.25],[784,0.5],[880,0.5],[784,0.5],[659,0.5],[523,1]],
+  [[880,0.5],[784,0.25],[659,0.25],[784,0.5],[659,0.5],[523,0.5],[494,0.5],[440,1]],
+  [[330,0.25],[392,0.5],[440,0.25],[494,0.5],[523,0.25],[659,0.25],[784,0.5],[880,0.5],[784,1]],
+  [[1046,0.5],[880,0.5],[784,0.5],[659,0.5],[523,0.5],[494,0.5],[440,0.5],[392,0.5]],
+];
+const BATTLE_P3_BASS: [number, number][][] = [
+  [[110,0.25],[110,0.25],[110,0.25],[110,0.25],[165,0.5],[110,0.5],[165,0.5],[110,0.5],[110,1]],
+  [[110,0.25],[0,0.25],[110,0.25],[165,0.25],[110,0.5],[220,0.5],[110,1],[110,1]],
+  [[164.8,0.25],[164.8,0.25],[164.8,0.25],[164.8,0.25],[247,0.5],[164.8,0.5],[247,0.5],[164.8,1]],
+  [[110,0.25],[110,0.25],[165,0.5],[110,0.25],[110,0.25],[110,0.5],[165,0.5],[110,1]],
+];
+const DRUM_P3 = [
+  [1, 1, 0, 1, 1, 0, 1, 1], // kick（ダブルビート）
+  [0, 0, 1, 0, 1, 0, 0, 1], // snare
+  [1, 1, 1, 1, 1, 1, 1, 1], // hihat
+];
+
+function getBattlePhrase() {
+  if (bgmPhase === 3) return { mel: BATTLE_P3_MELODY, bass: BATTLE_P3_BASS, drum: DRUM_P3 };
+  if (bgmPhase === 2) return { mel: BATTLE_P2_MELODY, bass: BATTLE_P2_BASS, drum: DRUM_P2 };
+  return { mel: BATTLE_P1_MELODY, bass: BATTLE_P1_BASS, drum: DRUM_P1 };
 }
 
 // ============================================================
-// スケジューラ（1小節先読みして音符をスケジュール）
+// スケジューラ
 // ============================================================
 const SCHEDULE_AHEAD = 0.15;
 const SCHEDULER_INTERVAL = 60;
-// 現在スケジュール済みの小節番号
 let bgmMeasure = 0;
-// 次にスケジュールする小節の開始時刻
 let bgmMeasureStartTime = 0;
 
 function scheduleMeasure(measureIdx: number, startTime: number) {
-  const { mel, bass } = getPhrase();
+  const { mel, bass, drum } = getBattlePhrase();
   const beatSec = getBeatSec();
+  const halfBeat = beatSec * 0.5; // 8分音符
   const measure = measureIdx % 4;
 
-  // メロディ
+  // メロディ（のこぎり波リード）
   let t = startTime;
   for (const [freq, dur] of mel[measure]) {
-    schedulePiano(t, freq, dur * beatSec * 0.92);
+    scheduleLead(t, freq, dur * beatSec * 0.88);
     t += dur * beatSec;
   }
 
   // ベース
   let bt = startTime;
   for (const [freq, dur] of bass[measure]) {
-    scheduleSqBass(bt, freq, dur * beatSec * 0.88);
+    scheduleBattleBass(bt, freq, dur * beatSec * 0.82);
     bt += dur * beatSec;
   }
 
-  // ドラム（4拍ぶん）
-  for (let b = 0; b < 4; b++) {
-    const beatTime = startTime + b * beatSec;
-    const [kick, snare] = BEAT_P1[b];
-    if (kick)  scheduleKick(beatTime,  bgmPhase === 3 ? 0.5 : bgmPhase === 2 ? 0.4 : 0.35);
-    if (snare) scheduleSnare(beatTime, bgmPhase === 3 ? 0.18 : bgmPhase === 2 ? 0.14 : 0.1);
-    // Phase3: 8分音符のサブキック
-    if (bgmPhase === 3) {
-      scheduleKick(beatTime + beatSec * 0.5, 0.2);
-    }
+  // ドラム（8分音符×8でパターン）
+  for (let i = 0; i < 8; i++) {
+    const stepTime = startTime + i * halfBeat;
+    if (drum[0][i]) scheduleKick(stepTime,   bgmPhase === 3 ? 0.9 : bgmPhase === 2 ? 0.8 : 0.7);
+    if (drum[1][i]) scheduleSnare(stepTime,  bgmPhase === 3 ? 0.4 : bgmPhase === 2 ? 0.35 : 0.3);
+    if (drum[2][i]) scheduleHihat(stepTime,  bgmPhase === 3 ? 0.16 : 0.12);
   }
 }
 
 function bgmScheduler() {
   if (!bgmPlaying || !bgmMasterGain) return;
-
   const ac = getCtx();
-  const beatSec = getBeatSec();
-  const measureSec = beatSec * 4;
-
+  const measureSec = getBeatSec() * 4;
   while (bgmMeasureStartTime < ac.currentTime + SCHEDULE_AHEAD + measureSec) {
     scheduleMeasure(bgmMeasure, bgmMeasureStartTime);
     bgmMeasure++;
     bgmMeasureStartTime += measureSec;
   }
-
   bgmSchedulerTimer = setTimeout(bgmScheduler, SCHEDULER_INTERVAL);
 }
 
