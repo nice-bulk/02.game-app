@@ -29,6 +29,7 @@ export interface GameState {
   beamIdCounter: number;
   screenShake: ScreenShake;
   hitstop: HitstopState;
+  ultFlashTimer: number;        // 必殺技発動直後のフラッシュフレーム
 
   setPhase: (p: GamePhase) => void;
   setPlayer: (fn: (p: Player) => Player) => void;
@@ -45,6 +46,8 @@ export interface GameState {
   tickScreenShake: () => void;
   setHitstop: (frames: number) => void;
   tickHitstop: () => boolean;
+  triggerUltFlash: () => void;
+  tickUltFlash: () => void;
   resetGame: () => void;
 }
 
@@ -114,6 +117,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   beamIdCounter: 0,
   screenShake: { intensity: 0, duration: 0 },
   hitstop: { frames: 0 },
+  ultFlashTimer: 0,
 
   setPhase: (p) => set({ phase: p }),
   setPlayer: (fn) => set((s) => ({ player: fn(s.player) })),
@@ -154,6 +158,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
     return false;
   },
+  triggerUltFlash: () => set({ ultFlashTimer: 40 }),
+  tickUltFlash: () => set((s) => ({ ultFlashTimer: Math.max(0, s.ultFlashTimer - 1) })),
   resetGame: () => {
     _bulletId = 0;
     _particleId = 0;
@@ -167,6 +173,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       particles: [],
       screenShake: { intensity: 0, duration: 0 },
       hitstop: { frames: 0 },
+      ultFlashTimer: 0,
     });
   },
 }));

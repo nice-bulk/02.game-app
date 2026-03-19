@@ -5,6 +5,129 @@ import { CANVAS_WIDTH, CANVAS_HEIGHT, ULT_DURATION, PHASE_TRANSITION_DURATION } 
 import type { Player, Boss, Bullet, Beam, Particle } from '../game/types';
 
 // ============================
+// 必殺技 — 発動フラッシュ
+// ============================
+function drawUltFlash(ctx: CanvasRenderingContext2D, ultFlashTimer: number) {
+  if (ultFlashTimer <= 0) return;
+  const t = ultFlashTimer / 40; // 1→0
+  ctx.save();
+
+  // 白→金のフラッシュオーバーレイ
+  const flashAlpha = t < 0.5 ? t * 2 : (1 - t) * 2;
+  ctx.fillStyle = `rgba(255, 230, 100, ${flashAlpha * 0.55})`;
+  ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+  // 画面四隅から中心へ収束するライン
+  const lineAlpha = flashAlpha * 0.9;
+  ctx.strokeStyle = `rgba(255, 220, 50, ${lineAlpha})`;
+  ctx.lineWidth = 3;
+  const cx = CANVAS_WIDTH / 2;
+  const cy = CANVAS_HEIGHT / 2;
+  const reach = (1 - t) * Math.sqrt(cx * cx + cy * cy) * 1.2;
+  const corners = [
+    [0, 0], [CANVAS_WIDTH, 0],
+    [0, CANVAS_HEIGHT], [CANVAS_WIDTH, CANVAS_HEIGHT],
+  ];
+  for (const [ox, oy] of corners) {
+    const dx = cx - ox; const dy = cy - oy;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    const ex = ox + (dx / len) * reach;
+    const ey = oy + (dy / len) * reach;
+    ctx.beginPath();
+    ctx.moveTo(ox, oy);
+    ctx.lineTo(ex, ey);
+    ctx.shadowColor = '#ffcc00';
+    ctx.shadowBlur = 12;
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+// ============================
+// 必殺技 — 持続中オーラ（プレイヤー周囲）
+// ============================
+function drawUltAura(ctx: CanvasRenderingContext2D, player: Player) {
+  if (!player.ultActive) return;
+  const { pos, radius, ultTimer } = player;
+  const t = Date.now();
+  const ratio = ultTimer / ULT_DURATION;
+
+  ctx.save();
+
+  // 外側の大きなグロー
+  const pulseOuter = Math.sin(t * 0.006) * 0.3 + 0.7;
+  const grdOuter = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, radius * 5);
+  grdOuter.addColorStop(0,   `rgba(255, 200, 0, ${pulseOuter * 0.35})`);
+  grdOuter.addColorStop(0.5, `rgba(255, 120, 0, ${pulseOuter * 0.15})`);
+  grdOuter.addColorStop(1,   'rgba(255, 60, 0, 0)');
+  ctx.fillStyle = grdOuter;
+  ctx.beginPath();
+  ctx.arc(pos.x, pos.y, radius * 5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 回転する剣気リング（3本の弧）
+  const rotSpeed = t * 0.004;
+  for (let i = 0; i < 3; i++) {
+    const baseAngle = rotSpeed + (Math.PI * 2 / 3) * i;
+    const arcR = radius + 14 + Math.sin(t * 0.01 + i) * 3;
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, arcR, baseAngle, baseAngle + Math.PI * 0.8);
+    ctx.strokeStyle = `rgba(255, 220, 60, ${0.7 + Math.sin(t * 0.01 + i) * 0.3})`;
+    ctx.lineWidth = 3.5;
+    ctx.shadowColor = '#ffcc00';
+    ctx.shadowBlur = 14;
+    ctx.stroke();
+  }
+
+  // 逆回転する内リング（細め）
+  const rotSpeed2 = -t * 0.003;
+  for (let i = 0; i < 4; i++) {
+    const baseAngle = rotSpeed2 + (Math.PI * 2 / 4) * i;
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, radius + 6, baseAngle, baseAngle + Math.PI * 0.4);
+    ctx.strokeStyle = `rgba(255, 255, 160, 0.6)`;
+    ctx.lineWidth = 1.5;
+    ctx.shadowBlur = 8;
+    ctx.stroke();
+  }
+
+  // 残り時間タイマーリング（残り少なくなると点滅）
+  const blinkFactor = ratio < 0.3
+    ? (Math.sin(t * 0.03) * 0.5 + 0.5)
+    : 1;
+  ctx.beginPath();
+  ctx.arc(pos.x, pos.y, radius + 22, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * ratio);
+  ctx.strokeStyle = `rgba(255, 200, 0, ${0.9 * blinkFactor})`;
+  ctx.lineWidth = 4;
+  ctx.shadowColor = '#ffcc00';
+  ctx.shadowBlur = ratio < 0.3 ? 20 * blinkFactor : 10;
+  ctx.lineCap = 'round';
+  ctx.stroke();
+
+  // 稲妻（ランダム小枝）
+  if (Math.random() < 0.4) {
+    const lAngle = Math.random() * Math.PI * 2;
+    const lR1 = radius + 8;
+    const lR2 = radius + 28 + Math.random() * 20;
+    ctx.beginPath();
+    ctx.moveTo(pos.x + Math.cos(lAngle) * lR1, pos.y + Math.sin(lAngle) * lR1);
+    // ジグザグ中間点
+    const midAngle = lAngle + (Math.random() - 0.5) * 0.6;
+    const midR = (lR1 + lR2) / 2;
+    ctx.lineTo(pos.x + Math.cos(midAngle) * midR, pos.y + Math.sin(midAngle) * midR);
+    ctx.lineTo(pos.x + Math.cos(lAngle) * lR2, pos.y + Math.sin(lAngle) * lR2);
+    ctx.strokeStyle = `rgba(255, 255, 200, ${Math.random() * 0.6 + 0.3})`;
+    ctx.lineWidth = 1;
+    ctx.shadowColor = '#ffffff';
+    ctx.shadowBlur = 6;
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+// ============================
 // 背景描画（強化版）
 // ============================
 function drawBackground(ctx: CanvasRenderingContext2D, frame: number, bossPhase: number) {
@@ -110,25 +233,10 @@ function drawPhaseTransition(
 // プレイヤー描画
 // ============================
 function drawPlayer(ctx: CanvasRenderingContext2D, player: Player) {
-  const { pos, radius, isRolling, hitFlash, reflexFlash, invincible, ultActive, ultTimer } = player;
+  const { pos, radius, isRolling, hitFlash, reflexFlash, invincible, ultActive } = player;
   ctx.save();
 
-  if (ultActive) {
-    const pulse = Math.sin(Date.now() * 0.01) * 0.3 + 0.7;
-    const grd = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, radius * 4);
-    grd.addColorStop(0, `rgba(255, 200, 0, ${pulse * 0.5})`);
-    grd.addColorStop(1, 'rgba(255, 100, 0, 0)');
-    ctx.fillStyle = grd;
-    ctx.beginPath();
-    ctx.arc(pos.x, pos.y, radius * 4, 0, Math.PI * 2);
-    ctx.fill();
-    const ratio = ultTimer / ULT_DURATION;
-    ctx.beginPath();
-    ctx.arc(pos.x, pos.y, radius + 8, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * ratio);
-    ctx.strokeStyle = `rgba(255, 200, 0, 0.9)`;
-    ctx.lineWidth = 3;
-    ctx.stroke();
-  }
+  // ultAura は drawUltAura() で先に描画済み
 
   if (reflexFlash > 0) {
     const grd = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, radius * 3);
@@ -476,7 +584,7 @@ export function GameCanvas() {
       raf = requestAnimationFrame(render);
       frameCountRef.current++;
 
-      const { player, boss, bullets, beams, particles, screenShake, input } = useGameStore.getState();
+      const { player, boss, bullets, beams, particles, screenShake, input, ultFlashTimer } = useGameStore.getState();
 
       let shakeX = 0, shakeY = 0;
       if (screenShake.duration > 0) {
@@ -501,10 +609,20 @@ export function GameCanvas() {
       ctx.fillStyle = bossGrd;
       ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-      // 必殺技中の画面エフェクト
+      // 必殺技中の画面エフェクト（微妙な金色オーバーレイ）
       if (player.ultActive) {
-        const ultPulse = Math.sin(Date.now() * 0.008) * 0.04 + 0.04;
-        ctx.fillStyle = `rgba(255, 180, 0, ${ultPulse})`;
+        const ultPulse = Math.sin(Date.now() * 0.005) * 0.025 + 0.025;
+        ctx.fillStyle = `rgba(255, 160, 0, ${ultPulse})`;
+        ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+        // 画面端の金色ビネット
+        const vigGrd = ctx.createRadialGradient(
+          CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, CANVAS_HEIGHT * 0.3,
+          CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, CANVAS_HEIGHT * 0.85,
+        );
+        vigGrd.addColorStop(0, 'rgba(0,0,0,0)');
+        vigGrd.addColorStop(1, `rgba(180, 80, 0, ${0.18 + Math.sin(Date.now() * 0.004) * 0.06})`);
+        ctx.fillStyle = vigGrd;
         ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
       }
 
@@ -515,8 +633,12 @@ export function GameCanvas() {
       particles.forEach((p) => drawParticle(ctx, p));
       drawBeams(ctx, beams, player.ultActive);
       bullets.forEach((b) => drawBullet(ctx, b));
+      drawUltAura(ctx, player);   // プレイヤーの下のオーラ（本体より先）
       drawPlayer(ctx, player);
       drawBoss(ctx, boss);
+
+      // 必殺技発動フラッシュ（最前面）
+      drawUltFlash(ctx, ultFlashTimer);
 
       // 照準
       drawCrosshair(ctx, input.mouseX, input.mouseY, player.ultActive);

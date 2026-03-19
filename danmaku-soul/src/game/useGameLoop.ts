@@ -349,6 +349,7 @@ export function useGameLoop(canvasRef: React.RefObject<HTMLCanvasElement | null>
             return { ...b, hp: newHp, hitFlash: 30, stunTimer: 30 };
           });
           playUltSound();
+          store.getState().triggerUltFlash();
           store.getState().addScreenShake(12, 40);
           store.getState().addParticles(
             makeParticles(store.getState().nextParticleId, pl.pos.x, pl.pos.y, 30, 8, 70, '#ffcc00')
@@ -654,6 +655,7 @@ export function useGameLoop(canvasRef: React.RefObject<HTMLCanvasElement | null>
 
       store.getState().tickParticles();
       store.getState().tickScreenShake();
+      store.getState().tickUltFlash();
     };
 
     rafRef.current = requestAnimationFrame(loop);
