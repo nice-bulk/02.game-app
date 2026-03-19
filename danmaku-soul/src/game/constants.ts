@@ -39,7 +39,7 @@ export const ULT_BEAM_INTERVAL = 3;         // 必殺技中のビーム間隔（
 export const BOSS_RADIUS = 40;
 export const BOSS_MAX_HP = 400;
 export const BOSS_MAX_POISE = 4;
-export const BOSS_POISE_RECOVER_TIME = 200;
+export const BOSS_POISE_RECOVER_TIME = 600; // 体幹回復は10秒かかる（パリィ間に回復しないよう長め）
 export const BOSS_STUN_DURATION = 150;
 
 // ボス移動

@@ -632,30 +632,31 @@ export function useGameLoop(canvasRef: React.RefObject<HTMLCanvasElement | null>
               reflexFlash: 40,
             }));
 
-            // 体幹削り（setBoss単体で完結させる）
-            const currentBoss = store.getState().boss;
-            const newPoise = currentBoss.poise - 1;
-            if (newPoise <= 0) {
-              // スタン確定
-              store.getState().setBoss((b: Boss) => ({
-                ...b,
-                poise: BOSS_MAX_POISE,
-                poiseRecoverTimer: 0,
-                stunTimer: BOSS_STUN_DURATION,
-                hitFlash: 40,
-                hp: Math.max(0, b.hp - 30),
-              }));
+            // 体幹削り：setBoss のコールバック内で poise を読んで判定（競合回避）
+            let didStun = false;
+            store.getState().setBoss((b: Boss) => {
+              const newPoise = b.poise - 1;
+              if (newPoise <= 0) {
+                didStun = true;
+                return {
+                  ...b,
+                  poise: BOSS_MAX_POISE,
+                  poiseRecoverTimer: 0,
+                  stunTimer: BOSS_STUN_DURATION,
+                  hitFlash: 40,
+                  hp: Math.max(0, b.hp - 30),
+                };
+              }
+              return { ...b, poise: newPoise, poiseRecoverTimer: 0, hitFlash: 12 };
+            });
+
+            if (didStun) {
+              const bossPos = store.getState().boss.pos;
               store.getState().addScreenShake(10, 35);
               store.getState().addParticles(
-                makeParticles(store.getState().nextParticleId, currentBoss.pos.x, currentBoss.pos.y, 25, 7, 70, '#ff8800')
+                makeParticles(store.getState().nextParticleId, bossPos.x, bossPos.y, 25, 7, 70, '#ff8800')
               );
               playStunSound();
-            } else {
-              store.getState().setBoss((b: Boss) => ({
-                ...b,
-                poise: newPoise,
-                hitFlash: 12,
-              }));
             }
             continue;
           }
