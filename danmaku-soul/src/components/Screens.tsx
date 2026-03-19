@@ -179,6 +179,11 @@ export function PauseScreen() {
     }
   };
 
+  const handleBackToTitle = () => {
+    stopBgm(400);
+    setPhase('title');
+  };
+
   return (
     <div className="overlay overlay-pause">
       <div className="overlay-content">
@@ -186,6 +191,7 @@ export function PauseScreen() {
         <div className="pause-menu">
           <button className="pause-btn" onClick={() => setPhase('playing')}>▶ 再開</button>
           <button className="pause-btn" onClick={handleRestart}>↺ 最初から</button>
+          <button className="pause-btn" onClick={handleBackToTitle}>⌂ タイトルに戻る</button>
           <button className="pause-btn pause-btn-quit" onClick={handleQuit}>✕ ゲーム終了</button>
         </div>
         <p className="pause-hint">ESC で再開</p>
@@ -213,6 +219,11 @@ export function DeadScreen() {
     }
   };
 
+  const handleBackToTitle = () => {
+    stopBgm(0);
+    setPhase('title');
+  };
+
   return (
     <div className="overlay overlay-dead">
       <div className="overlay-content">
@@ -220,6 +231,7 @@ export function DeadScreen() {
         <p className="dead-sub">霧の中に消えた...</p>
         <div className="pause-menu">
           <button className="start-btn" onClick={handleTryAgain}>TRY AGAIN</button>
+          <button className="pause-btn" onClick={handleBackToTitle}>⌂ タイトルに戻る</button>
           <button className="pause-btn pause-btn-quit" onClick={handleQuit}>✕ ゲーム終了</button>
         </div>
       </div>
@@ -252,6 +264,11 @@ export function VictoryScreen() {
     startBgm(); // 戦闘BGM再起動
   };
 
+  const handleBackToTitle = () => {
+    stopClearBgm(400);
+    setPhase('title');
+  };
+
   return (
     <div className="overlay overlay-victory">
       <div className="overlay-content">
@@ -259,6 +276,7 @@ export function VictoryScreen() {
         <p className="victory-sub">古の魂を打ち倒した</p>
         <div className="pause-menu">
           <button className="start-btn start-btn-victory" onClick={handlePlayAgain}>PLAY AGAIN</button>
+          <button className="pause-btn" onClick={handleBackToTitle}>⌂ タイトルに戻る</button>
           <button className="pause-btn pause-btn-quit" onClick={handleQuit}>✕ ゲーム終了</button>
         </div>
       </div>
