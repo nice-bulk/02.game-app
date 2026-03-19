@@ -242,9 +242,9 @@ function bgmScheduler() {
   bgmSchedulerTimer = setTimeout(bgmScheduler, SCHEDULER_INTERVAL);
 }
 
-// ---- 公開API ----
+// ---- 公開API（戦闘BGM） ----
 
-/** BGM開始 */
+/** 戦闘BGM開始 */
 export function startBgm() {
   if (bgmPlaying) return;
   try {
@@ -254,13 +254,14 @@ export function startBgm() {
     bgmMasterGain.connect(ac.destination);
 
     bgmPlaying = true;
+    bgmPhase = 1;
     bgmMeasure = 0;
     bgmMeasureStartTime = ac.currentTime + 0.05;
     bgmScheduler();
   } catch { /* ignore */ }
 }
 
-/** BGM停止（フェードアウト） */
+/** 戦闘BGM停止（フェードアウト） */
 export function stopBgm(fadeMs = 400) {
   if (!bgmPlaying) return;
   bgmPlaying = false;
@@ -283,9 +284,205 @@ export function setBgmPhase(phase: number) {
   bgmPhase = phase;
 }
 
-/** BGM再生中かどうか */
-export function isBgmPlaying() {
-  return bgmPlaying;
+// ============================================================
+// タイトルBGM（ゆったり・環境音楽風）
+// ============================================================
+
+let titleBgmGain: GainNode | null = null;
+let titleBgmTimer: ReturnType<typeof setTimeout> | null = null;
+let titleBgmPlaying = false;
+let titleBgmMeasure = 0;
+let titleBgmMeasureStartTime = 0;
+
+// BPM 72 固定（ゆったり）
+const TITLE_BPM = 72;
+const TITLE_BEAT_SEC = 60 / TITLE_BPM;
+
+// ---- タイトル用音色 ----
+
+// 温かいサイン波ピアノ（長めリリース）
+function scheduleTitlePiano(time: number, freq: number, dur: number, vol = 0.2) {
+  if (freq === 0) return;
+  try {
+    const ac = getCtx();
+    const osc  = ac.createOscillator();
+    const gain = ac.createGain();
+    const lp   = ac.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 1800;
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq, time);
+
+    gain.gain.setValueAtTime(0.001, time);
+    gain.gain.linearRampToValueAtTime(vol, time + 0.015);
+    gain.gain.exponentialRampToValueAtTime(vol * 0.5, time + dur * 0.5);
+    gain.gain.exponentialRampToValueAtTime(0.001, time + dur * 1.4); // 長い余韻
+
+    osc.connect(gain);
+    gain.connect(lp);
+    lp.connect(titleBgmGain!);
+    osc.start(time);
+    osc.stop(time + dur * 1.5);
+  } catch { /* ignore */ }
+}
+
+// 柔らかいパッド（複数倍音の重ね）
+function scheduleTitlePad(time: number, freq: number, dur: number, vol = 0.07) {
+  if (freq === 0) return;
+  const harmonics = [1, 2, 3];
+  const vols      = [1, 0.4, 0.15];
+  for (let h = 0; h < harmonics.length; h++) {
+    try {
+      const ac   = getCtx();
+      const osc  = ac.createOscillator();
+      const gain = ac.createGain();
+      const lp   = ac.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = 800;
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq * harmonics[h], time);
+
+      const v = vol * vols[h];
+      gain.gain.setValueAtTime(0.001, time);
+      gain.gain.linearRampToValueAtTime(v, time + 0.3);   // ゆっくりフェードイン
+      gain.gain.setValueAtTime(v, time + dur - 0.3);
+      gain.gain.exponentialRampToValueAtTime(0.001, time + dur);
+
+      osc.connect(gain);
+      gain.connect(lp);
+      lp.connect(titleBgmGain!);
+      osc.start(time);
+      osc.stop(time + dur + 0.1);
+    } catch { /* ignore */ }
+  }
+}
+
+// 低音ベース（ゆっくり）
+function scheduleTitleBass(time: number, freq: number, dur: number, vol = 0.18) {
+  if (freq === 0) return;
+  try {
+    const ac   = getCtx();
+    const osc  = ac.createOscillator();
+    const gain = ac.createGain();
+    const lp   = ac.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 300;
+
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(freq, time);
+
+    gain.gain.setValueAtTime(0.001, time);
+    gain.gain.linearRampToValueAtTime(vol, time + 0.05);
+    gain.gain.exponentialRampToValueAtTime(0.001, time + dur * 0.85);
+
+    osc.connect(gain);
+    gain.connect(lp);
+    lp.connect(titleBgmGain!);
+    osc.start(time);
+    osc.stop(time + dur);
+  } catch { /* ignore */ }
+}
+
+// ---- タイトル楽曲データ ----
+// Cメジャー系、穏やかなループ（4小節）
+// コード進行: C - Am - F - G
+const TITLE_MELODY: [number, number][][] = [
+  // 小節1: C (ゆったり)
+  [[0,1],[523,1],[659,1],[784,1]],
+  // 小節2: Am
+  [[880,1.5],[784,0.5],[659,1],[0,1]],
+  // 小節3: F
+  [[698,1],[784,1],[880,1],[784,1]],
+  // 小節4: G → C解決
+  [[784,1],[740,1],[659,1.5],[523,0.5]],
+];
+const TITLE_BASS: [number, number][][] = [
+  [[130.8,2],[130.8,2]],  // C
+  [[110,2],[110,2]],      // Am
+  [[87.3,2],[87.3,2]],    // F
+  [[98,2],[98,2]],        // G
+];
+// パッド（コードルート音、全音符）
+const TITLE_PAD: [number, number][] = [
+  [261.6, 4], // C
+  [220,   4], // Am
+  [174.6, 4], // F
+  [196,   4], // G
+];
+
+function scheduleTitleMeasure(measureIdx: number, startTime: number) {
+  const m = measureIdx % 4;
+  const bs = TITLE_BEAT_SEC;
+
+  // パッド（コード全体を包む）
+  scheduleTitlePad(startTime, TITLE_PAD[m][0], TITLE_PAD[m][1] * bs);
+
+  // メロディ
+  let t = startTime;
+  for (const [freq, dur] of TITLE_MELODY[m]) {
+    scheduleTitlePiano(t, freq, dur * bs * 0.88);
+    t += dur * bs;
+  }
+
+  // ベース
+  let bt = startTime;
+  for (const [freq, dur] of TITLE_BASS[m]) {
+    scheduleTitleBass(bt, freq, dur * bs * 0.75);
+    bt += dur * bs;
+  }
+}
+
+function titleBgmScheduler() {
+  if (!titleBgmPlaying || !titleBgmGain) return;
+
+  const ac = getCtx();
+  const measureSec = TITLE_BEAT_SEC * 4;
+
+  while (titleBgmMeasureStartTime < ac.currentTime + 0.15 + measureSec) {
+    scheduleTitleMeasure(titleBgmMeasure, titleBgmMeasureStartTime);
+    titleBgmMeasure++;
+    titleBgmMeasureStartTime += measureSec;
+  }
+
+  titleBgmTimer = setTimeout(titleBgmScheduler, 60);
+}
+
+/** タイトルBGM開始 */
+export function startTitleBgm() {
+  if (titleBgmPlaying) return;
+  try {
+    const ac = getCtx();
+    titleBgmGain = ac.createGain();
+    titleBgmGain.gain.value = 0.0;
+    titleBgmGain.connect(ac.destination);
+    // ゆっくりフェードイン
+    titleBgmGain.gain.linearRampToValueAtTime(0.65, ac.currentTime + 1.5);
+
+    titleBgmPlaying = true;
+    titleBgmMeasure = 0;
+    titleBgmMeasureStartTime = ac.currentTime + 0.1;
+    titleBgmScheduler();
+  } catch { /* ignore */ }
+}
+
+/** タイトルBGM停止 */
+export function stopTitleBgm(fadeMs = 600) {
+  if (!titleBgmPlaying) return;
+  titleBgmPlaying = false;
+  if (titleBgmTimer !== null) {
+    clearTimeout(titleBgmTimer);
+    titleBgmTimer = null;
+  }
+  if (titleBgmGain) {
+    const ac = getCtx();
+    titleBgmGain.gain.setValueAtTime(titleBgmGain.gain.value, ac.currentTime);
+    titleBgmGain.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + fadeMs / 1000);
+    const old = titleBgmGain;
+    setTimeout(() => { try { old.disconnect(); } catch { /* ignore */ } }, fadeMs + 100);
+    titleBgmGain = null;
+  }
 }
 
 function playTone(

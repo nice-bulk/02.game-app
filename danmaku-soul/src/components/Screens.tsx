@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { CANVAS_WIDTH, CANVAS_HEIGHT } from '../game/constants';
-import { startClearBgm, stopClearBgm } from '../game/audio';
+import { startClearBgm, stopClearBgm, startTitleBgm, stopTitleBgm, startBgm, stopBgm } from '../game/audio';
 
 // タイトル用ミニ弾幕アニメーション（Canvas）
 function TitleDanmakuCanvas() {
@@ -124,6 +124,18 @@ function TitleDanmakuCanvas() {
 
 export function TitleScreen() {
   const resetGame = useGameStore((s) => s.resetGame);
+
+  // マウント時にタイトルBGM開始、アンマウント時に停止
+  useEffect(() => {
+    startTitleBgm();
+    return () => stopTitleBgm(400);
+  }, []);
+
+  const handleStart = () => {
+    stopTitleBgm(300);
+    resetGame(); // useGameLoop内でstartBgm()が呼ばれる
+  };
+
   return (
     <div className="overlay">
       <TitleDanmakuCanvas />
@@ -138,7 +150,7 @@ export function TitleScreen() {
           <div><span className="key-hint">ホイールクリック</span> 必殺技 <span className="cost-hint">（スタック{4}消費）</span></div>
           <div><span className="key-hint">ESC</span> ポーズ</div>
         </div>
-        <button className="start-btn" onClick={resetGame}>
+        <button className="start-btn" onClick={handleStart}>
           ENTER THE FIGHT
         </button>
       </div>
@@ -150,7 +162,14 @@ export function PauseScreen() {
   const setPhase  = useGameStore((s) => s.setPhase);
   const resetGame = useGameStore((s) => s.resetGame);
 
+  const handleRestart = () => {
+    stopBgm(0);
+    resetGame();
+    startBgm();
+  };
+
   const handleQuit = () => {
+    stopBgm(400);
     if (window.ipcRenderer) {
       window.close();
     } else {
@@ -164,7 +183,7 @@ export function PauseScreen() {
         <h2 className="pause-title">PAUSED</h2>
         <div className="pause-menu">
           <button className="pause-btn" onClick={() => setPhase('playing')}>▶ 再開</button>
-          <button className="pause-btn" onClick={resetGame}>↺ 最初から</button>
+          <button className="pause-btn" onClick={handleRestart}>↺ 最初から</button>
           <button className="pause-btn pause-btn-quit" onClick={handleQuit}>✕ ゲーム終了</button>
         </div>
         <p className="pause-hint">ESC で再開</p>
@@ -176,6 +195,12 @@ export function PauseScreen() {
 export function DeadScreen() {
   const resetGame = useGameStore((s) => s.resetGame);
   const setPhase  = useGameStore((s) => s.setPhase);
+
+  const handleTryAgain = () => {
+    stopBgm(0);      // 残っていれば即停止
+    resetGame();     // ゲームリセット
+    startBgm();      // 戦闘BGM再起動
+  };
 
   const handleQuit = () => {
     if (window.ipcRenderer) {
@@ -191,7 +216,7 @@ export function DeadScreen() {
         <h2 className="dead-title">YOU DIED</h2>
         <p className="dead-sub">霧の中に消えた...</p>
         <div className="pause-menu">
-          <button className="start-btn" onClick={resetGame}>TRY AGAIN</button>
+          <button className="start-btn" onClick={handleTryAgain}>TRY AGAIN</button>
           <button className="pause-btn pause-btn-quit" onClick={handleQuit}>✕ ゲーム終了</button>
         </div>
       </div>
@@ -221,6 +246,7 @@ export function VictoryScreen() {
   const handlePlayAgain = () => {
     stopClearBgm(200);
     resetGame();
+    startBgm(); // 戦闘BGM再起動
   };
 
   return (
