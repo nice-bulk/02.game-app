@@ -104,7 +104,7 @@ export function useGameLoop(canvasRef: React.RefObject<HTMLCanvasElement | null>
       const s = store.getState();
       if (e.code === 'Escape' && down) {
         if (s.phase === 'playing') { stopBgm(300); s.setPhase('paused'); return; }
-        if (s.phase === 'paused')  { startBgm();   s.setPhase('playing'); return; }
+        if (s.phase === 'paused')  { startBgm(); s.setPhase('playing'); return; }
         return;
       }
       if (s.phase !== 'playing') return;
@@ -170,9 +170,6 @@ export function useGameLoop(canvasRef: React.RefObject<HTMLCanvasElement | null>
     window.addEventListener('mousedown', onMouseDown);
     window.addEventListener('mouseup', onMouseUp);
     canvas.addEventListener('contextmenu', onContextMenu);
-
-    // BGM 起動
-    startBgm();
 
     // ============ ゲームループ ============
     const loop = () => {

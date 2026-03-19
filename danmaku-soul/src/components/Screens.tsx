@@ -133,7 +133,8 @@ export function TitleScreen() {
 
   const handleStart = () => {
     stopTitleBgm(300);
-    resetGame(); // useGameLoop内でstartBgm()が呼ばれる
+    resetGame();
+    startBgm(); // 戦闘BGM開始
   };
 
   return (
@@ -174,6 +175,7 @@ export function PauseScreen() {
       window.close();
     } else {
       setPhase('title');
+      // TitleScreenのuseEffectでstartTitleBgm()が呼ばれる
     }
   };
 
@@ -203,6 +205,7 @@ export function DeadScreen() {
   };
 
   const handleQuit = () => {
+    stopBgm(0);
     if (window.ipcRenderer) {
       window.close();
     } else {
