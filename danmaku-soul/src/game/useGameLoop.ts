@@ -23,6 +23,7 @@ import {
   playBeamSound, playHitSound, playParrySound, playStunSound,
   playBombHitSound, playBossHitSound, playUltSound, playHealSound,
   playReflexSound, playPhaseTransitionSound, playShootSound, playBombLaunchSound,
+  startBgm, stopBgm, setBgmPhase,
 } from './audio';
 
 // パリィ成功後の無敵フレーム（2秒 = 120f）
@@ -102,8 +103,8 @@ export function useGameLoop(canvasRef: React.RefObject<HTMLCanvasElement | null>
     const onKey = (e: KeyboardEvent, down: boolean) => {
       const s = store.getState();
       if (e.code === 'Escape' && down) {
-        if (s.phase === 'playing') { s.setPhase('paused'); return; }
-        if (s.phase === 'paused')  { s.setPhase('playing'); return; }
+        if (s.phase === 'playing') { stopBgm(300); s.setPhase('paused'); return; }
+        if (s.phase === 'paused')  { startBgm();   s.setPhase('playing'); return; }
         return;
       }
       if (s.phase !== 'playing') return;
@@ -170,6 +171,9 @@ export function useGameLoop(canvasRef: React.RefObject<HTMLCanvasElement | null>
     window.addEventListener('mouseup', onMouseUp);
     canvas.addEventListener('contextmenu', onContextMenu);
 
+    // BGM 起動
+    startBgm();
+
     // ============ ゲームループ ============
     const loop = () => {
       rafRef.current = requestAnimationFrame(loop);
@@ -210,7 +214,7 @@ export function useGameLoop(canvasRef: React.RefObject<HTMLCanvasElement | null>
               const dmg = bp.ultActive ? BEAM_DAMAGE * ULT_DAMAGE_MULTIPLIER : BEAM_DAMAGE;
               store.getState().setBoss((b: Boss) => {
                 const newHp = Math.max(0, b.hp - dmg);
-                if (newHp <= 0) store.getState().setPhase('victory');
+                if (newHp <= 0) { stopBgm(800); store.getState().setPhase('victory'); }
                 return { ...b, hp: newHp, hitFlash: 4 };
               });
               playBossHitSound();
@@ -345,7 +349,7 @@ export function useGameLoop(canvasRef: React.RefObject<HTMLCanvasElement | null>
           }));
           store.getState().setBoss((b: Boss) => {
             const newHp = Math.max(0, b.hp - 100);
-            if (newHp <= 0) store.getState().setPhase('victory');
+            if (newHp <= 0) { stopBgm(800); store.getState().setPhase('victory'); }
             return { ...b, hp: newHp, hitFlash: 30, stunTimer: 30 };
           });
           playUltSound();
@@ -510,6 +514,7 @@ export function useGameLoop(canvasRef: React.RefObject<HTMLCanvasElement | null>
         const boss = store.getState().boss;
         if (boss.phaseTransitionTimer === PHASE_TRANSITION_DURATION - 1) {
           playPhaseTransitionSound(boss.phase);
+          setBgmPhase(boss.phase);
           store.getState().addScreenShake(8, 30);
           store.getState().addParticles(
             makeParticles(
@@ -617,7 +622,7 @@ export function useGameLoop(canvasRef: React.RefObject<HTMLCanvasElement | null>
           const dmg = bullet.type === 'bomb' ? BOMB_DAMAGE : 1;
           store.getState().setPlayer((p: Player) => {
             const newHp = Math.max(0, p.hp - dmg);
-            if (newHp <= 0) store.getState().setPhase('dead');
+            if (newHp <= 0) { stopBgm(500); store.getState().setPhase('dead'); }
             return {
               ...p, hp: newHp, invincible: true,
               rollTimer: INVINCIBLE_AFTER_HIT, hitFlash: 40,
@@ -661,6 +666,7 @@ export function useGameLoop(canvasRef: React.RefObject<HTMLCanvasElement | null>
     rafRef.current = requestAnimationFrame(loop);
     return () => {
       cancelAnimationFrame(rafRef.current);
+      stopBgm();
       window.removeEventListener('keydown', kd);
       window.removeEventListener('keyup', ku);
       window.removeEventListener('mousemove', onMouseMove);
