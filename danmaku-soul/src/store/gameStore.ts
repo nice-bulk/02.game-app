@@ -63,6 +63,7 @@ const initialPlayer = (): Player => ({
   rollTimer: 0,
   rollCooldown: 0,
   invincible: false,
+  parryInvincible: false,
   hitFlash: 0,
   reflexFlash: 0,
   stack: 0,

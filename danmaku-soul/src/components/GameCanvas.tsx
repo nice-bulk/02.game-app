@@ -233,7 +233,7 @@ function drawPhaseTransition(
 // プレイヤー描画
 // ============================
 function drawPlayer(ctx: CanvasRenderingContext2D, player: Player) {
-  const { pos, radius, isRolling, hitFlash, reflexFlash, invincible, ultActive } = player;
+  const { pos, radius, isRolling, hitFlash, reflexFlash, invincible, parryInvincible, ultActive } = player;
   ctx.save();
 
   // ultAura は drawUltAura() で先に描画済み
@@ -248,7 +248,8 @@ function drawPlayer(ctx: CanvasRenderingContext2D, player: Player) {
     ctx.fill();
   }
 
-  if (invincible && !isRolling && Math.floor(Date.now() / 80) % 2 === 0) {
+  // 被弾無敵中のみ点滅（パリィ無敵は点滅しない）
+  if (invincible && !parryInvincible && !isRolling && Math.floor(Date.now() / 80) % 2 === 0) {
     ctx.restore();
     return;
   }

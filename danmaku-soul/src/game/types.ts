@@ -17,6 +17,7 @@ export interface Player {
   rollTimer: number;
   rollCooldown: number;
   invincible: boolean;
+  parryInvincible: boolean;  // パリィ由来の無敵（点滅しない）
   hitFlash: number;
   reflexFlash: number;
   // スタック
