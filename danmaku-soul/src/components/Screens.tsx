@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { CANVAS_WIDTH, CANVAS_HEIGHT } from '../game/constants';
+import { startClearBgm, stopClearBgm } from '../game/audio';
 
 // タイトル用ミニ弾幕アニメーション（Canvas）
 function TitleDanmakuCanvas() {
@@ -202,12 +203,24 @@ export function VictoryScreen() {
   const resetGame = useGameStore((s) => s.resetGame);
   const setPhase  = useGameStore((s) => s.setPhase);
 
+  // マウント時にクリアBGM開始、アンマウント時に停止
+  useEffect(() => {
+    startClearBgm();
+    return () => stopClearBgm(300);
+  }, []);
+
   const handleQuit = () => {
+    stopClearBgm(300);
     if (window.ipcRenderer) {
       window.close();
     } else {
       setPhase('title');
     }
+  };
+
+  const handlePlayAgain = () => {
+    stopClearBgm(200);
+    resetGame();
   };
 
   return (
@@ -216,7 +229,7 @@ export function VictoryScreen() {
         <h2 className="victory-title">SOUL OBTAINED</h2>
         <p className="victory-sub">古の魂を打ち倒した</p>
         <div className="pause-menu">
-          <button className="start-btn start-btn-victory" onClick={resetGame}>PLAY AGAIN</button>
+          <button className="start-btn start-btn-victory" onClick={handlePlayAgain}>PLAY AGAIN</button>
           <button className="pause-btn pause-btn-quit" onClick={handleQuit}>✕ ゲーム終了</button>
         </div>
       </div>

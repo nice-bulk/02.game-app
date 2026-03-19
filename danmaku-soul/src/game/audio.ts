@@ -498,3 +498,265 @@ export function playBombLaunchSound() {
   playTone(100, 'sawtooth', 0.2, 0.3, 0.01);
   playNoise(0.1, 0.2);
 }
+
+// ============================================================
+// クリアBGM
+// ============================================================
+
+let clearBgmGain: GainNode | null = null;
+let clearBgmTimer: ReturnType<typeof setTimeout> | null = null;
+let clearBgmPlaying = false;
+
+/**
+ * クリアBGM停止
+ */
+export function stopClearBgm(fadeMs = 600) {
+  clearBgmPlaying = false;
+  if (clearBgmTimer !== null) {
+    clearTimeout(clearBgmTimer);
+    clearBgmTimer = null;
+  }
+  if (clearBgmGain) {
+    const ac = getCtx();
+    clearBgmGain.gain.setValueAtTime(clearBgmGain.gain.value, ac.currentTime);
+    clearBgmGain.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + fadeMs / 1000);
+    const old = clearBgmGain;
+    setTimeout(() => { try { old.disconnect(); } catch { /* ignore */ } }, fadeMs + 100);
+    clearBgmGain = null;
+  }
+}
+
+// ---- 内部ヘルパー ----
+
+function scheduleNote(
+  ac: AudioContext,
+  dest: AudioNode,
+  freq: number,
+  type: OscillatorType,
+  startTime: number,
+  duration: number,
+  gainPeak: number,
+  attack = 0.02,
+  release = 0.3,
+) {
+  if (freq === 0) return;
+  const osc = ac.createOscillator();
+  const g   = ac.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, startTime);
+  g.gain.setValueAtTime(0.001, startTime);
+  g.gain.linearRampToValueAtTime(gainPeak, startTime + attack);
+  g.gain.setValueAtTime(gainPeak, startTime + duration - release);
+  g.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+  osc.connect(g);
+  g.connect(dest);
+  osc.start(startTime);
+  osc.stop(startTime + duration + 0.05);
+}
+
+function scheduleChord(
+  ac: AudioContext,
+  dest: AudioNode,
+  freqs: number[],
+  startTime: number,
+  duration: number,
+  vol = 0.12,
+) {
+  for (const f of freqs) {
+    scheduleNote(ac, dest, f, 'sine', startTime, duration, vol, 0.04, 0.5);
+  }
+}
+
+function scheduleArpeggio(
+  ac: AudioContext,
+  dest: AudioNode,
+  freqs: number[],
+  startTime: number,
+  stepSec: number,
+  vol = 0.18,
+) {
+  freqs.forEach((f, i) => {
+    scheduleNote(ac, dest, f, 'triangle', startTime + i * stepSec, stepSec * 2, vol, 0.01, stepSec * 1.5);
+  });
+}
+
+function schedulePercBoom(ac: AudioContext, dest: AudioNode, time: number) {
+  // キックドラム
+  const osc = ac.createOscillator();
+  const g   = ac.createGain();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(120, time);
+  osc.frequency.exponentialRampToValueAtTime(40, time + 0.15);
+  g.gain.setValueAtTime(0.9, time);
+  g.gain.exponentialRampToValueAtTime(0.001, time + 0.3);
+  osc.connect(g); g.connect(dest);
+  osc.start(time); osc.stop(time + 0.3);
+
+  // ノイズ
+  const bufLen = Math.ceil(ac.sampleRate * 0.05);
+  const buf    = ac.createBuffer(1, bufLen, ac.sampleRate);
+  const d      = buf.getChannelData(0);
+  for (let i = 0; i < bufLen; i++) d[i] = Math.random() * 2 - 1;
+  const ns  = ac.createBufferSource();
+  ns.buffer = buf;
+  const ng  = ac.createGain();
+  ng.gain.setValueAtTime(0.4, time);
+  ng.gain.exponentialRampToValueAtTime(0.001, time + 0.05);
+  ns.connect(ng); ng.connect(dest);
+  ns.start(time);
+}
+
+function scheduleBell(
+  ac: AudioContext,
+  dest: AudioNode,
+  freq: number,
+  time: number,
+  vol = 0.25,
+) {
+  // ベル音 = サイン波 + 倍音 + 長いリリース
+  const harmonics = [1, 2.756, 5.404, 8.933];
+  const gains     = [1.0,  0.5,   0.25,  0.1];
+  for (let h = 0; h < harmonics.length; h++) {
+    const osc = ac.createOscillator();
+    const g   = ac.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = freq * harmonics[h];
+    const peak = vol * gains[h];
+    g.gain.setValueAtTime(0.001, time);
+    g.gain.linearRampToValueAtTime(peak, time + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.001, time + 3.5);
+    osc.connect(g); g.connect(dest);
+    osc.start(time); osc.stop(time + 3.6);
+  }
+}
+
+/**
+ * クリアBGM開始
+ *
+ * 構成:
+ *   0.0s  ── ファンファーレ（ドラムブーム + 上昇コード）
+ *   2.0s  ── 解放のメロディ（Cメジャー、明るいアルペジオ）
+ *   6.0s  ── 壮大コーラス（弦楽風コード + ベル）
+ *  12.0s  ── 静かなアウトロ（余韻）
+ *  16.0s  ── フェードアウト
+ */
+export function startClearBgm() {
+  if (clearBgmPlaying) return;
+  clearBgmPlaying = true;
+
+  try {
+    const ac   = getCtx();
+    const master = ac.createGain();
+    master.gain.value = 0.0;
+    master.connect(ac.destination);
+    clearBgmGain = master;
+
+    const t0 = ac.currentTime + 0.1;
+
+    // フェードイン
+    master.gain.linearRampToValueAtTime(0.75, t0 + 0.5);
+
+    // ---- 0.0s: ファンファーレ ----
+    // ドラムブーム x3
+    schedulePercBoom(ac, master, t0 + 0.0);
+    schedulePercBoom(ac, master, t0 + 0.5);
+    schedulePercBoom(ac, master, t0 + 0.9);
+
+    // 上昇コード: C → G → Am → F（各0.4s）
+    const fanfareChords = [
+      [261.6, 329.6, 392.0],   // C
+      [392.0, 493.9, 587.3],   // G
+      [440.0, 523.3, 659.3],   // Am（高め）
+      [349.2, 440.0, 523.3],   // F
+    ];
+    fanfareChords.forEach((ch, i) => {
+      scheduleChord(ac, master, ch, t0 + i * 0.42, 0.5, 0.18);
+    });
+
+    // 高音ファンファーレリード（トランペット風 sawtooth）
+    const fanLead = [523.3, 587.3, 659.3, 784.0, 880.0];
+    fanLead.forEach((f, i) => {
+      scheduleNote(ac, master, f, 'sawtooth', t0 + i * 0.18, 0.22, 0.15, 0.01, 0.1);
+    });
+
+    // ---- 2.0s: 解放のメロディ ----
+    const m = t0 + 2.0;
+    // アルペジオベース（C major）
+    const arp1 = [261.6, 329.6, 392.0, 523.3, 659.3, 523.3, 392.0, 329.6];
+    scheduleArpeggio(ac, master, arp1, m,       0.22, 0.14);
+    scheduleArpeggio(ac, master, arp1, m + 1.8, 0.22, 0.14);
+
+    // メロディライン（明るいCメジャー）
+    const melody1 = [
+      [523.3, 0.35], [587.3, 0.2], [659.3, 0.4],
+      [784.0, 0.55], [880.0, 0.9],
+      [784.0, 0.25], [659.3, 0.25], [587.3, 0.5],
+    ];
+    let mt = m + 0.1;
+    for (const [f, dur] of melody1) {
+      scheduleNote(ac, master, f as number, 'triangle', mt, dur as number, 0.22, 0.02, 0.15);
+      mt += (dur as number) + 0.04;
+    }
+
+    // コード伴奏
+    scheduleChord(ac, master, [261.6, 329.6, 392.0], m,       1.6, 0.08); // C
+    scheduleChord(ac, master, [392.0, 493.9, 587.3], m + 1.8, 1.6, 0.08); // G
+
+    // ---- 6.0s: 壮大コーラス ----
+    const c = t0 + 6.0;
+
+    // コード進行: C - F - G - C（各1.5s）
+    const bigChords: [number[], number][] = [
+      [[130.8, 261.6, 329.6, 392.0, 523.3], 1.5], // C
+      [[174.6, 261.6, 349.2, 440.0, 523.3], 1.5], // F
+      [[196.0, 293.7, 392.0, 493.9, 587.3], 1.5], // G
+      [[130.8, 261.6, 329.6, 523.3, 659.3], 1.5], // C high
+    ];
+    let ct = c;
+    for (const [freqs, dur] of bigChords) {
+      scheduleChord(ac, master, freqs, ct, dur, 0.1);
+      ct += dur;
+    }
+
+    // ベル（コードの頭で鳴らす）
+    scheduleBell(ac, master, 523.3, c + 0.0, 0.22);
+    scheduleBell(ac, master, 440.0, c + 1.5, 0.18);
+    scheduleBell(ac, master, 392.0, c + 3.0, 0.18);
+    scheduleBell(ac, master, 523.3, c + 4.5, 0.25);
+
+    // アルペジオ（高音）
+    const arp2 = [523.3, 659.3, 784.0, 1046.5, 784.0, 659.3];
+    scheduleArpeggio(ac, master, arp2, c,       0.25, 0.12);
+    scheduleArpeggio(ac, master, arp2, c + 1.5, 0.25, 0.12);
+    scheduleArpeggio(ac, master, arp2, c + 3.0, 0.25, 0.12);
+    scheduleArpeggio(ac, master, arp2, c + 4.5, 0.25, 0.12);
+
+    // ドラムブームをコーラス頭に
+    schedulePercBoom(ac, master, c);
+    schedulePercBoom(ac, master, c + 3.0);
+
+    // ---- 12.0s: 静かなアウトロ ----
+    const a = t0 + 12.0;
+    // ピアノ風の単音アルペジオ（しずかに）
+    const outro = [523.3, 659.3, 784.0, 1046.5, 784.0, 659.3, 523.3, 392.0];
+    scheduleArpeggio(ac, master, outro, a,       0.3, 0.09);
+    scheduleArpeggio(ac, master, outro, a + 2.5, 0.3, 0.07);
+
+    // 最後のベル
+    scheduleBell(ac, master, 1046.5, a + 0.0, 0.15);
+    scheduleBell(ac, master, 784.0,  a + 1.5, 0.12);
+    scheduleBell(ac, master, 523.3,  a + 3.5, 0.18);
+
+    // ---- 16.0s: フェードアウト ----
+    master.gain.setValueAtTime(0.75, t0 + 15.5);
+    master.gain.exponentialRampToValueAtTime(0.001, t0 + 18.0);
+
+    // 18s後にリソース解放
+    clearBgmTimer = setTimeout(() => {
+      clearBgmPlaying = false;
+      try { master.disconnect(); } catch { /* ignore */ }
+      if (clearBgmGain === master) clearBgmGain = null;
+    }, 18500);
+
+  } catch { /* ignore */ }
+}
