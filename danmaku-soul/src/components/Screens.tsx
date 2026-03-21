@@ -240,10 +240,10 @@ export function DeadScreen() {
 }
 
 export function VictoryScreen() {
-  const resetGame = useGameStore((s) => s.resetGame);
-  const setPhase  = useGameStore((s) => s.setPhase);
+  const resetGame     = useGameStore((s) => s.resetGame);
+  const setPhase      = useGameStore((s) => s.setPhase);
+  const clearResult   = useGameStore((s) => s.clearResult);
 
-  // マウント時にクリアBGM開始、アンマウント時に停止
   useEffect(() => {
     startClearBgm();
     return () => stopClearBgm(300);
@@ -251,29 +251,67 @@ export function VictoryScreen() {
 
   const handleQuit = () => {
     stopClearBgm(300);
-    if (window.ipcRenderer) {
-      window.close();
-    } else {
-      setPhase('title');
-    }
+    if (window.ipcRenderer) { window.close(); }
+    else { setPhase('title'); }
   };
-
   const handlePlayAgain = () => {
     stopClearBgm(200);
     resetGame();
-    startBgm(); // 戦闘BGM再起動
+    startBgm();
   };
-
   const handleBackToTitle = () => {
     stopClearBgm(400);
     setPhase('title');
   };
 
+  const r = clearResult;
+  const rankColor: Record<string, string> = {
+    S: '#ffe066', A: '#88ffcc', B: '#88aaff', C: '#aaaaaa',
+  };
+  const formatTime = (sec: number) => {
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${m}:${String(s).padStart(2, '0')}`;
+  };
+
   return (
     <div className="overlay overlay-victory">
       <div className="overlay-content">
+        {/* ノーダメクリア特典 */}
+        {r?.tookDamage === false && (
+          <div className="nodamage-badge">★ NO DAMAGE CLEAR ★</div>
+        )}
+
         <h2 className="victory-title">SOUL OBTAINED</h2>
         <p className="victory-sub">古の魂を打ち倒した</p>
+
+        {/* リザルト */}
+        {r && (
+          <div className="result-box">
+            <div className="result-rank" style={{ color: rankColor[r.rank] }}>
+              RANK {r.rank}
+            </div>
+            <div className="result-row">
+              <span className="result-label">クリアタイム</span>
+              <span className="result-value">{formatTime(r.clearTimeSec)}</span>
+            </div>
+            <div className="result-row">
+              <span className="result-label">パリィ成功</span>
+              <span className="result-value">{r.parryCount} 回</span>
+            </div>
+            <div className="result-row">
+              <span className="result-label">ノーダメージ</span>
+              <span className="result-value" style={{ color: r.tookDamage ? '#ff6666' : '#66ffaa' }}>
+                {r.tookDamage ? '×' : '✓'}
+              </span>
+            </div>
+            <div className="result-row">
+              <span className="result-label">挑戦回数</span>
+              <span className="result-value">{r.runCount} 回目</span>
+            </div>
+          </div>
+        )}
+
         <div className="pause-menu">
           <button className="start-btn start-btn-victory" onClick={handlePlayAgain}>PLAY AGAIN</button>
           <button className="pause-btn" onClick={handleBackToTitle}>⌂ タイトルに戻る</button>

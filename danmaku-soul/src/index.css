@@ -448,6 +448,61 @@ body {
   box-shadow: 0 0 30px rgba(200, 180, 0, 0.4);
 }
 
+/* ノーダメクリアバッジ */
+.nodamage-badge {
+  font-size: 15px;
+  font-weight: bold;
+  letter-spacing: 3px;
+  color: #ffe066;
+  text-shadow: 0 0 16px #ffcc00, 0 0 32px #ff8800;
+  animation: nodamage-pulse 0.6s ease-in-out infinite alternate;
+  margin-bottom: -8px;
+}
+@keyframes nodamage-pulse {
+  from { opacity: 0.85; text-shadow: 0 0 12px #ffcc00; }
+  to   { opacity: 1;    text-shadow: 0 0 24px #ffcc00, 0 0 48px #ff8800; }
+}
+
+/* リザルトボックス */
+.result-box {
+  border: 1px solid rgba(200, 180, 80, 0.35);
+  background: rgba(0, 0, 0, 0.5);
+  padding: 16px 28px;
+  min-width: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  animation: fadeInGrow 0.5s ease-out;
+}
+
+.result-rank {
+  font-size: 42px;
+  font-weight: 900;
+  letter-spacing: 6px;
+  text-align: center;
+  text-shadow: 0 0 20px currentColor;
+  margin-bottom: 4px;
+}
+
+.result-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 24px;
+  font-size: 13px;
+  letter-spacing: 1px;
+}
+
+.result-label {
+  color: rgba(180, 180, 180, 0.7);
+}
+
+.result-value {
+  color: #eee;
+  font-weight: bold;
+  letter-spacing: 2px;
+}
+
 /* アニメーション */
 @keyframes fadeInGrow {
   from {

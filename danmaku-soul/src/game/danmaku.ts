@@ -1,4 +1,4 @@
-// 弾幕パターン生成モジュール
+// 弾幕パターン生成モジュール（固定シーケンス覚えゲー方式）
 
 import type { Boss, Bullet } from './types';
 import { BULLET_RADIUS, BOMB_RADIUS, BOMB_SPEED, PARRY_WINDOW } from './constants';
@@ -13,163 +13,207 @@ function normalize(x: number, y: number): { x: number; y: number } {
   return { x: x / len, y: y / len };
 }
 
-// ---- パターン定義 ----
+// ================================================================
+// 攻撃シーケンス定義
+// フェーズごとに固定の順番で技が出る（死んで覚える）
+// ================================================================
 
-/** 回転放射（既存） */
-function patternRadial(boss: Boss, nextId: () => number, frame: number): Bullet[] {
-  const phase = boss.phase;
-  let count = 12;
-  let speed = 1.8;
-  let rotSpeed = 0.01;
-  if (phase === 2) { count = 16; speed = 2.4; rotSpeed = 0.02; }
-  if (phase === 3) { count = 20; speed = rand(2.5, 3.2); rotSpeed = 0.03; }
-
-  const bullets: Bullet[] = [];
-  for (let i = 0; i < count; i++) {
-    const angle = (Math.PI * 2 / count) * i + frame * rotSpeed;
-    const s = phase === 3 ? rand(2.2, 3.2) : speed;
-    bullets.push({
-      id: nextId(),
-      pos: { x: boss.pos.x, y: boss.pos.y },
-      vel: { x: Math.cos(angle) * s, y: Math.sin(angle) * s },
-      radius: BULLET_RADIUS,
-      type: 'normal',
-      fromBoss: true,
-      parryWindowTimer: 0,
-    });
-  }
-  return bullets;
+export interface AttackStep {
+  type: 'danmaku' | 'bomb';
+  skillName: string;          // 画面に表示される技名
+  telegraphFrames: number;    // 予兆フレーム数
 }
 
-/** 螺旋弾（Phase2以降） */
-function patternSpiral(boss: Boss, nextId: () => number, frame: number): Bullet[] {
-  const phase = boss.phase;
-  const arms = phase === 3 ? 3 : 2;
-  const speed = phase === 3 ? 2.8 : 2.2;
-  const rotSpeed = phase === 3 ? 0.06 : 0.045;
-  const bullets: Bullet[] = [];
-  for (let arm = 0; arm < arms; arm++) {
-    const angle = (Math.PI * 2 / arms) * arm + frame * rotSpeed;
-    bullets.push({
-      id: nextId(),
-      pos: { x: boss.pos.x, y: boss.pos.y },
-      vel: { x: Math.cos(angle) * speed, y: Math.sin(angle) * speed },
-      radius: BULLET_RADIUS,
-      type: 'normal',
-      fromBoss: true,
-      parryWindowTimer: 0,
-    });
-  }
-  return bullets;
+// Phase1: 3技ループ（基本を学ぶ）
+export const SEQUENCE_P1: AttackStep[] = [
+  { type: 'danmaku', skillName: '魂の散弾',   telegraphFrames: 30 },
+  { type: 'bomb',    skillName: '滅魂爆弾',   telegraphFrames: 50 },
+  { type: 'danmaku', skillName: '螺旋の怨念', telegraphFrames: 30 },
+  { type: 'bomb',    skillName: '滅魂爆弾',   telegraphFrames: 50 },
+];
+
+// Phase2: 5技ループ（パターンが増える）
+export const SEQUENCE_P2: AttackStep[] = [
+  { type: 'danmaku', skillName: '業火の螺旋',   telegraphFrames: 25 },
+  { type: 'danmaku', skillName: '怒りの扇',     telegraphFrames: 25 },
+  { type: 'bomb',    skillName: '業焔爆弾',     telegraphFrames: 45 },
+  { type: 'danmaku', skillName: '業火の螺旋',   telegraphFrames: 25 },
+  { type: 'bomb',    skillName: '業焔爆弾',     telegraphFrames: 45 },
+];
+
+// Phase3: 6技ループ（全力・緊張感MAX）
+export const SEQUENCE_P3: AttackStep[] = [
+  { type: 'danmaku', skillName: '滅びの十字',   telegraphFrames: 20 },
+  { type: 'danmaku', skillName: '魂の乱舞',     telegraphFrames: 18 },
+  { type: 'bomb',    skillName: '魂滅爆炎弾',   telegraphFrames: 40 },
+  { type: 'danmaku', skillName: '怒髪天の嵐',  telegraphFrames: 18 },
+  { type: 'bomb',    skillName: '魂滅爆炎弾',   telegraphFrames: 40 },
+  { type: 'danmaku', skillName: '終焉の弾幕',   telegraphFrames: 15 },
+];
+
+export function getSequence(phase: number): AttackStep[] {
+  if (phase === 3) return SEQUENCE_P3;
+  if (phase === 2) return SEQUENCE_P2;
+  return SEQUENCE_P1;
 }
 
-/** 扇形狙い撃ち（プレイヤー方向に扇状） */
-function patternAimed(
-  boss: Boss,
-  nextId: () => number,
-  playerPos: { x: number; y: number },
+// ================================================================
+// パターン実装
+// easyFactor: 慣らし難易度係数（1.0=通常、0.65など=やさしい）
+// ================================================================
+
+function patternRadial(
+  boss: Boss, nextId: () => number, frame: number, easyFactor: number,
 ): Bullet[] {
   const phase = boss.phase;
-  const count = phase === 3 ? 7 : 5;
+  let count = Math.floor((phase === 3 ? 20 : phase === 2 ? 16 : 12) * easyFactor);
+  count = Math.max(6, count);
+  const speed = (phase === 3 ? 2.8 : phase === 2 ? 2.4 : 1.8) * easyFactor;
+  const rotSpeed = phase === 3 ? 0.03 : phase === 2 ? 0.02 : 0.01;
+
+  return Array.from({ length: count }, (_, i) => {
+    const angle = (Math.PI * 2 / count) * i + frame * rotSpeed;
+    return {
+      id: nextId(),
+      pos: { x: boss.pos.x, y: boss.pos.y },
+      vel: { x: Math.cos(angle) * speed, y: Math.sin(angle) * speed },
+      radius: BULLET_RADIUS,
+      type: 'normal' as const,
+      fromBoss: true,
+      parryWindowTimer: 0,
+    };
+  });
+}
+
+function patternSpiral(
+  boss: Boss, nextId: () => number, frame: number, easyFactor: number,
+): Bullet[] {
+  const phase = boss.phase;
+  const arms = phase === 3 ? 3 : 2;
+  const speed = (phase === 3 ? 2.8 : 2.2) * easyFactor;
+  const rotSpeed = phase === 3 ? 0.06 : 0.045;
+
+  return Array.from({ length: arms }, (_, arm) => {
+    const angle = (Math.PI * 2 / arms) * arm + frame * rotSpeed;
+    return {
+      id: nextId(),
+      pos: { x: boss.pos.x, y: boss.pos.y },
+      vel: { x: Math.cos(angle) * speed, y: Math.sin(angle) * speed },
+      radius: BULLET_RADIUS,
+      type: 'normal' as const,
+      fromBoss: true,
+      parryWindowTimer: 0,
+    };
+  });
+}
+
+function patternAimed(
+  boss: Boss, nextId: () => number,
+  playerPos: { x: number; y: number }, easyFactor: number,
+): Bullet[] {
+  const phase = boss.phase;
+  const count = Math.floor((phase === 3 ? 7 : 5) * easyFactor);
   const spread = phase === 3 ? 0.55 : 0.45;
-  const speed = phase === 3 ? 2.8 : 2.2;
+  const speed = (phase === 3 ? 2.8 : 2.2) * easyFactor;
+  const baseAngle = Math.atan2(
+    playerPos.y - boss.pos.y,
+    playerPos.x - boss.pos.x,
+  );
 
-  const dx = playerPos.x - boss.pos.x;
-  const dy = playerPos.y - boss.pos.y;
-  const baseAngle = Math.atan2(dy, dx);
-
-  const bullets: Bullet[] = [];
-  for (let i = 0; i < count; i++) {
+  return Array.from({ length: Math.max(3, count) }, (_, i) => {
     const angle = baseAngle + (i - (count - 1) / 2) * (spread / (count - 1));
-    bullets.push({
+    return {
       id: nextId(),
       pos: { x: boss.pos.x, y: boss.pos.y },
       vel: { x: Math.cos(angle) * speed, y: Math.sin(angle) * speed },
       radius: BULLET_RADIUS,
-      type: 'normal',
+      type: 'normal' as const,
       fromBoss: true,
       parryWindowTimer: 0,
-    });
-  }
-  return bullets;
+    };
+  });
 }
 
-/** 十字＋斜め交互（Phase3専用） */
-function patternCross(boss: Boss, nextId: () => number, shotCount: number): Bullet[] {
+function patternCross(
+  boss: Boss, nextId: () => number, seqIdx: number, easyFactor: number,
+): Bullet[] {
   const count = 8;
-  const speed = 2.6;
-  const rotOffset = (shotCount % 2 === 0) ? 0 : Math.PI / 8;
-  const bullets: Bullet[] = [];
-  for (let i = 0; i < count; i++) {
+  const speed = 2.6 * easyFactor;
+  const rotOffset = (seqIdx % 2 === 0) ? 0 : Math.PI / 8;
+
+  return Array.from({ length: count }, (_, i) => {
     const angle = (Math.PI * 2 / count) * i + rotOffset;
-    bullets.push({
+    return {
       id: nextId(),
       pos: { x: boss.pos.x, y: boss.pos.y },
       vel: { x: Math.cos(angle) * speed, y: Math.sin(angle) * speed },
       radius: BULLET_RADIUS,
-      type: 'normal',
+      type: 'normal' as const,
       fromBoss: true,
       parryWindowTimer: 0,
-    });
-  }
-  return bullets;
+    };
+  });
 }
 
-/** バースト（全方位散弾 少数高速） Phase3 */
-function patternBurst(boss: Boss, nextId: () => number): Bullet[] {
-  const count = 24;
-  const bullets: Bullet[] = [];
-  for (let i = 0; i < count; i++) {
+function patternBurst(
+  boss: Boss, nextId: () => number, easyFactor: number,
+): Bullet[] {
+  const count = Math.floor(24 * easyFactor);
+  return Array.from({ length: Math.max(12, count) }, (_, i) => {
     const angle = (Math.PI * 2 / count) * i;
-    const speed = rand(1.8, 4.2);
-    bullets.push({
+    const speed = rand(1.8, 4.2) * easyFactor;
+    return {
       id: nextId(),
       pos: { x: boss.pos.x, y: boss.pos.y },
       vel: { x: Math.cos(angle) * speed, y: Math.sin(angle) * speed },
       radius: BULLET_RADIUS,
-      type: 'normal',
+      type: 'normal' as const,
       fromBoss: true,
       parryWindowTimer: 0,
-    });
-  }
-  return bullets;
+    };
+  });
 }
 
-// ---- エクスポート ----
+// ================================================================
+// 公開API
+// ================================================================
 
-/** パターンを選択して弾幕を生成 */
+/**
+ * 固定シーケンスに基づいて弾幕を生成
+ * skillName は呼び出し元が SEQUENCE から取得して表示する
+ */
 export function generateDanmaku(
   boss: Boss,
   nextId: () => number,
   frame: number,
-  shotCount: number,
+  seqIdx: number,
   playerPos: { x: number; y: number },
+  easyFactor = 1.0,
 ): Bullet[] {
   const phase = boss.phase;
+  const seq = getSequence(phase);
+  const step = seq[seqIdx % seq.length];
 
-  if (phase === 1) {
-    // Phase1: 放射のみ
-    return patternRadial(boss, nextId, frame);
+  // 技名に応じてパターンを選択
+  if (step.skillName === '魂の散弾' || step.skillName === '魂の乱舞' || step.skillName === '終焉の弾幕') {
+    const bullets = patternRadial(boss, nextId, frame, easyFactor);
+    if (step.skillName === '終焉の弾幕') {
+      // 終焉の弾幕: バースト同時
+      return [...bullets, ...patternBurst(boss, nextId, easyFactor)];
+    }
+    return bullets;
   }
-
-  if (phase === 2) {
-    // Phase2: 放射 / 螺旋 / 扇形 をローテーション
-    const pattern = shotCount % 3;
-    if (pattern === 0) return patternRadial(boss, nextId, frame);
-    if (pattern === 1) return patternSpiral(boss, nextId, frame);
-    return patternAimed(boss, nextId, playerPos);
+  if (step.skillName === '螺旋の怨念' || step.skillName === '業火の螺旋') {
+    return patternSpiral(boss, nextId, frame, easyFactor);
   }
-
-  // Phase3: 4種をローテーション
-  const pattern = shotCount % 4;
-  if (pattern === 0) return patternRadial(boss, nextId, frame);
-  if (pattern === 1) return patternSpiral(boss, nextId, frame);
-  if (pattern === 2) return patternCross(boss, nextId, shotCount);
-  if (pattern === 3) {
-    // バースト＋扇形を同時
-    return [...patternBurst(boss, nextId), ...patternAimed(boss, nextId, playerPos)];
+  if (step.skillName === '怒りの扇' || step.skillName === '怒髪天の嵐') {
+    return patternAimed(boss, nextId, playerPos, easyFactor);
   }
-  return patternRadial(boss, nextId, frame);
+  if (step.skillName === '滅びの十字') {
+    return patternCross(boss, nextId, seqIdx, easyFactor);
+  }
+  // fallback
+  return patternRadial(boss, nextId, frame, easyFactor);
 }
 
 /** ボム生成 */

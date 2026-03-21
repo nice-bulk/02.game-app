@@ -12,13 +12,15 @@ import {
   BOMB_DAMAGE,
   BOMB_INTERVAL_P1, BOMB_INTERVAL_P2, BOMB_INTERVAL_P3,
   SHOOT_INTERVAL_P1, SHOOT_INTERVAL_P2, SHOOT_INTERVAL_P3,
-  HITSTOP_PARRY, HITSTOP_HIT,
+  HITSTOP_HIT, PARRY_HITSTOP_STRONG,
   BOSS_POISE_RECOVER_TIME, BOSS_STUN_DURATION, BOSS_MAX_POISE,
   PHASE2_THRESHOLD, PHASE3_THRESHOLD, PHASE_TRANSITION_DURATION,
   BOSS_MOVE_SPEED_P1, BOSS_MOVE_SPEED_P2, BOSS_MOVE_SPEED_P3,
   BOSS_MOVE_CHANGE_INTERVAL, BOSS_MARGIN,
+  SKILL_NAME_DURATION,
+  EASY_RUN_THRESHOLD, EASY_SPEED_FACTOR,
 } from './constants';
-import { generateDanmaku, generateBomb } from './danmaku';
+import { generateDanmaku, generateBomb, getSequence } from './danmaku';
 import {
   playBeamSound, playHitSound, playParrySound, playStunSound,
   playBombHitSound, playBossHitSound, playUltSound, playHealSound,
@@ -92,7 +94,6 @@ export function useGameLoop(canvasRef: React.RefObject<HTMLCanvasElement | null>
   const staminaRegenDelayRef = useRef(0);
   const beamTimerRef = useRef(0);
   const parryFramesRef = useRef(0);
-  const shotCountRef = useRef(0); // 弾幕パターンローテーション用
   const rafRef = useRef<number>(0);
 
   useEffect(() => {
@@ -186,6 +187,17 @@ export function useGameLoop(canvasRef: React.RefObject<HTMLCanvasElement | null>
       frameRef.current++;
       const frame = frameRef.current;
 
+      // startFrame を初回フレームで設定
+      if (frame === 1) {
+        store.setState({ startFrame: 1 });
+      }
+
+      // 慣らし難易度係数（初回・2回目は易しめ）
+      const runCount = store.getState().runCount;
+      const easyFactor = runCount <= EASY_RUN_THRESHOLD
+        ? EASY_SPEED_FACTOR + (1 - EASY_SPEED_FACTOR) * ((runCount - 1) / EASY_RUN_THRESHOLD)
+        : 1.0;
+
       // ================================================================
       // ビーム攻撃
       // ================================================================
@@ -211,7 +223,11 @@ export function useGameLoop(canvasRef: React.RefObject<HTMLCanvasElement | null>
               const dmg = bp.ultActive ? BEAM_DAMAGE * ULT_DAMAGE_MULTIPLIER : BEAM_DAMAGE;
               store.getState().setBoss((b: Boss) => {
                 const newHp = Math.max(0, b.hp - dmg);
-                if (newHp <= 0) { stopBgm(800); store.getState().setPhase('victory'); }
+                if (newHp <= 0) {
+                  stopBgm(800);
+                  store.getState().finishGame(frame);
+                  store.getState().setPhase('victory');
+                }
                 return { ...b, hp: newHp, hitFlash: 4 };
               });
               playBossHitSound();
@@ -346,7 +362,11 @@ export function useGameLoop(canvasRef: React.RefObject<HTMLCanvasElement | null>
           }));
           store.getState().setBoss((b: Boss) => {
             const newHp = Math.max(0, b.hp - 100);
-            if (newHp <= 0) { stopBgm(800); store.getState().setPhase('victory'); }
+            if (newHp <= 0) {
+              stopBgm(800);
+              store.getState().finishGame(frame);
+              store.getState().setPhase('victory');
+            }
             return { ...b, hp: newHp, hitFlash: 30, stunTimer: 30 };
           });
           playUltSound();
@@ -425,55 +445,64 @@ export function useGameLoop(canvasRef: React.RefObject<HTMLCanvasElement | null>
         if (ny < topBound)   { ny = topBound;   vel = { ...vel, y:  Math.abs(vel.y) }; }
         if (ny > bottomBound){ ny = bottomBound; vel = { ...vel, y: -Math.abs(vel.y) }; }
 
-        // ---- 弾幕タイマー ----
-        const shootInterval = getShootInterval(phase);
-        const bombInterval  = getBombInterval(phase);
-        let newShootTimer = b.shootTimer + 1;
-        let newBombTimer  = b.bombTimer  + 1;
+        // ---- 固定シーケンス攻撃 ----
+        const seq = getSequence(phase);
+        const currentStep = seq[b.attackSeqIndex % seq.length];
+        const isNextBomb = currentStep.type === 'bomb';
+        const shootInterval = isNextBomb ? getBombInterval(phase) : getShootInterval(phase);
+        const telegraphNeeded = currentStep.telegraphFrames;
 
+        let newShootTimer = b.shootTimer + 1;
         let newTelegraphActive = b.telegraphActive;
         let newTelegraphTimer  = b.telegraphTimer > 0 ? b.telegraphTimer - 1 : 0;
-        if (!newTelegraphActive && newShootTimer >= shootInterval - 20) {
+        let newSkillNameTimer  = b.skillNameTimer > 0 ? b.skillNameTimer - 1 : 0;
+        let newSkillName       = b.skillName;
+        let newAttackSeqIndex  = b.attackSeqIndex;
+
+        // 予兆開始
+        if (!newTelegraphActive && newShootTimer >= shootInterval - telegraphNeeded) {
           newTelegraphActive = true;
-          newTelegraphTimer  = 20;
+          newTelegraphTimer  = telegraphNeeded;
+          // 技名表示開始
+          newSkillName      = currentStep.skillName;
+          newSkillNameTimer = SKILL_NAME_DURATION;
         }
 
-        let newBombTelegraphActive = b.bombTelegraphActive;
-        let newBombTelegraphTimer  = b.bombTelegraphTimer > 0 ? b.bombTelegraphTimer - 1 : 0;
-        if (!newBombTelegraphActive && newBombTimer >= bombInterval - 40) {
-          newBombTelegraphActive = true;
-          newBombTelegraphTimer  = 40;
-        }
-
+        // 発射
         if (newShootTimer >= shootInterval) {
           newShootTimer = 0;
           newTelegraphActive = false;
+          newAttackSeqIndex  = b.attackSeqIndex + 1;
+
           const playerPos = store.getState().player.pos;
-          const danmaku = generateDanmaku(
-            { ...b, pos: { x: nx, y: ny } },
-            store.getState().nextBulletId,
-            frame,
-            shotCountRef.current,
-            playerPos,
-          );
-          shotCountRef.current++;
-          store.getState().setBullets((prev) => [...prev, ...danmaku]);
-          store.getState().addScreenShake(1.5, 6);
-          playShootSound(phase);
+          if (isNextBomb) {
+            const bomb = generateBomb(
+              { ...b, pos: { x: nx, y: ny } },
+              playerPos,
+              store.getState().nextBulletId,
+            );
+            store.getState().setBullets((prev) => [...prev, bomb]);
+            store.getState().addScreenShake(3, 12);
+            playBombLaunchSound();
+          } else {
+            const danmaku = generateDanmaku(
+              { ...b, pos: { x: nx, y: ny } },
+              store.getState().nextBulletId,
+              frame,
+              b.attackSeqIndex,
+              playerPos,
+              easyFactor,
+            );
+            store.getState().setBullets((prev) => [...prev, ...danmaku]);
+            store.getState().addScreenShake(1.5, 6);
+            playShootSound(phase);
+          }
         }
 
-        if (newBombTimer >= bombInterval) {
-          newBombTimer = 0;
-          newBombTelegraphActive = false;
-          const bomb = generateBomb(
-            { ...b, pos: { x: nx, y: ny } },
-            store.getState().player.pos,
-            store.getState().nextBulletId,
-          );
-          store.getState().setBullets((prev) => [...prev, bomb]);
-          store.getState().addScreenShake(3, 12);
-          playBombLaunchSound();
-        }
+        // 旧 bombTimer は使わない（ダミー）
+        const newBombTimer = b.bombTimer;
+        const newBombTelegraphActive = isNextBomb && newTelegraphActive;
+        const newBombTelegraphTimer  = isNextBomb ? newTelegraphTimer : 0;
 
         // ---- ポイズ回復 ----
         let newPoise = b.poise;
@@ -493,10 +522,13 @@ export function useGameLoop(canvasRef: React.RefObject<HTMLCanvasElement | null>
           moveDirTimer: newMoveDirTimer,
           shootTimer: newShootTimer,
           bombTimer:  newBombTimer,
+          attackSeqIndex: newAttackSeqIndex,
           telegraphTimer:       newTelegraphTimer,
           telegraphActive:      newTelegraphActive,
           bombTelegraphTimer:   newBombTelegraphTimer,
           bombTelegraphActive:  newBombTelegraphActive,
+          skillNameTimer: newSkillNameTimer,
+          skillName:      newSkillName,
           poise: newPoise,
           poiseRecoverTimer: newPoiseRecoverTimer,
           phase,
@@ -561,7 +593,11 @@ export function useGameLoop(canvasRef: React.RefObject<HTMLCanvasElement | null>
           // 跳ね返しボムのダメージは弱め（通常ボムの半分）
           store.getState().setBoss((b: Boss) => {
             const newHp = Math.max(0, b.hp - 15);
-            if (newHp <= 0) { stopBgm(800); store.getState().setPhase('victory'); }
+            if (newHp <= 0) {
+              stopBgm(800);
+              store.getState().finishGame(frame);
+              store.getState().setPhase('victory');
+            }
             return { ...b, hp: newHp, hitFlash: 10 };
           });
           store.getState().addParticles(
@@ -619,8 +655,9 @@ export function useGameLoop(canvasRef: React.RefObject<HTMLCanvasElement | null>
             store.getState().addParticles(
               makeParticles(store.getState().nextParticleId, bullet.pos.x, bullet.pos.y, 20, 6, 50, '#00ffff')
             );
-            store.getState().setHitstop(HITSTOP_PARRY);
-            store.getState().addScreenShake(5, 18);
+            store.getState().setHitstop(PARRY_HITSTOP_STRONG); // 強化版ヒットストップ
+            store.getState().addScreenShake(7, 22);
+            store.getState().incrementParry();
             playParrySound();
 
             // パリィ無敵（点滅なし）・スタック付与
@@ -668,6 +705,7 @@ export function useGameLoop(canvasRef: React.RefObject<HTMLCanvasElement | null>
         if (d < hitRange && !currentInvincible) {
           bulletsToRemove.add(bullet.id);
           const dmg = bullet.type === 'bomb' ? BOMB_DAMAGE : 1;
+          store.getState().markDamageTaken();
           store.getState().setPlayer((p: Player) => {
             const newHp = Math.max(0, p.hp - dmg);
             if (newHp <= 0) { stopBgm(500); store.getState().setPhase('dead'); }

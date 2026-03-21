@@ -33,8 +33,8 @@ export interface Player {
 
 export interface Boss {
   pos: Vec2;
-  vel: Vec2;           // 移動速度ベクトル（新規）
-  moveDirTimer: number; // 移動方向変更タイマー（新規）
+  vel: Vec2;
+  moveDirTimer: number;
   radius: number;
   hp: number;
   maxHp: number;
@@ -42,14 +42,19 @@ export interface Boss {
   poise: number;
   maxPoise: number;
   poiseRecoverTimer: number;
+  // 固定攻撃シーケンス
+  attackSeqIndex: number;    // 現在の攻撃シーケンス番号
   shootTimer: number;
-  bombTimer: number;          // ボム投擲タイマー
+  bombTimer: number;
   stunTimer: number;
   telegraphTimer: number;
   telegraphActive: boolean;
-  bombTelegraphActive: boolean; // ボム予兆
+  bombTelegraphActive: boolean;
   bombTelegraphTimer: number;
   hitFlash: number;
+  // 技名表示
+  skillNameTimer: number;    // 技名表示残りフレーム
+  skillName: string;         // 表示する技名
   // フェーズ移行演出
   phaseTransitionTimer: number;
   lastPhase: number;
@@ -93,16 +98,25 @@ export interface Particle {
 
 export type GamePhase = 'title' | 'playing' | 'paused' | 'dead' | 'victory';
 
+// クリア後のリザルト
+export interface ClearResult {
+  clearTimeSec: number;   // クリアタイム（秒）
+  parryCount: number;     // パリィ成功回数
+  tookDamage: boolean;    // ダメージを受けたか
+  runCount: number;       // 何回目の挑戦か
+  rank: 'S' | 'A' | 'B' | 'C';
+}
+
 export interface InputState {
   up: boolean;
   down: boolean;
   left: boolean;
   right: boolean;
-  roll: boolean;          // Space: HP回復
-  beamFire: boolean;      // 左クリック長押し
-  parry: boolean;         // 右クリック（押下中フラグ）
-  parryFrames: number;    // パリィ有効残りフレーム（右クリック押下で20フレームセット）
-  ultimate: boolean;      // ホイールクリック
+  roll: boolean;
+  beamFire: boolean;
+  parry: boolean;
+  parryFrames: number;
+  ultimate: boolean;
   mouseX: number;
   mouseY: number;
 }

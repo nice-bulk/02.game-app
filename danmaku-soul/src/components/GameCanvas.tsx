@@ -396,34 +396,60 @@ function drawBoss(ctx: CanvasRenderingContext2D, boss: Boss) {
     ctx.stroke();
   }
 
-  // ボス本体
+  // ボス本体（HP低下で見た目変化）
   ctx.beginPath();
   ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
 
+  // HPが減るほど暗く・赤く変化
   let color1: string, color2: string;
-  if (phase === 3) { color1 = '#cc2200'; color2 = '#ff4400'; }
-  else if (phase === 2) { color1 = '#882200'; color2 = '#cc3300'; }
-  else { color1 = '#552200'; color2 = '#883300'; }
+  if (hpRatio < 0.15) {
+    // 瀕死：真っ赤に明滅
+    const flicker = Math.sin(Date.now() * 0.025) * 0.5 + 0.5;
+    color1 = `hsl(${0 + flicker * 10}, 100%, ${15 + flicker * 10}%)`;
+    color2 = `hsl(${10 + flicker * 5}, 100%, ${30 + flicker * 15}%)`;
+  } else if (hpRatio < 0.3) {
+    color1 = '#aa0000'; color2 = '#ee2200';
+  } else if (hpRatio < 0.5) {
+    color1 = '#991100'; color2 = '#cc2200';
+  } else if (phase === 3) {
+    color1 = '#cc2200'; color2 = '#ff4400';
+  } else if (phase === 2) {
+    color1 = '#882200'; color2 = '#cc3300';
+  } else {
+    color1 = '#552200'; color2 = '#883300';
+  }
 
   const grd = ctx.createRadialGradient(pos.x - radius * 0.3, pos.y - radius * 0.3, 0, pos.x, pos.y, radius);
   grd.addColorStop(0, color2);
   grd.addColorStop(1, color1);
   ctx.fillStyle = grd;
-  ctx.shadowColor = hitFlash > 0 ? '#ffffff' : phase === 3 ? '#ff2200' : '#880000';
-  ctx.shadowBlur = hitFlash > 0 ? 35 : 20;
+  ctx.shadowColor = hitFlash > 0 ? '#ffffff' : hpRatio < 0.3 ? '#ff0000' : phase === 3 ? '#ff2200' : '#880000';
+  ctx.shadowBlur = hitFlash > 0 ? 35 : hpRatio < 0.3 ? 30 : 20;
   ctx.fill();
 
-  // HP低下時のひびエフェクト
+  // HP 50%以下：ひびエフェクト（本数・強度が増す）
   if (hpRatio < 0.5) {
-    ctx.strokeStyle = `rgba(255, 100, 0, ${(0.5 - hpRatio) * 2})`;
-    ctx.lineWidth = 2;
-    for (let i = 0; i < 5; i++) {
-      const angle = (i / 5) * Math.PI * 2 + Date.now() * 0.001;
+    const crackCount = hpRatio < 0.25 ? 8 : 5;
+    const crackAlpha = (0.5 - hpRatio) * 2.5;
+    ctx.strokeStyle = `rgba(255, ${Math.floor(hpRatio * 200)}, 0, ${Math.min(1, crackAlpha)})`;
+    ctx.lineWidth = hpRatio < 0.25 ? 2.5 : 1.5;
+    for (let i = 0; i < crackCount; i++) {
+      const angle = (i / crackCount) * Math.PI * 2 + Date.now() * 0.001;
       ctx.beginPath();
-      ctx.moveTo(pos.x + Math.cos(angle) * radius * 0.3, pos.y + Math.sin(angle) * radius * 0.3);
+      ctx.moveTo(pos.x + Math.cos(angle) * radius * 0.2, pos.y + Math.sin(angle) * radius * 0.2);
       ctx.lineTo(pos.x + Math.cos(angle) * radius, pos.y + Math.sin(angle) * radius);
       ctx.stroke();
     }
+  }
+
+  // HP 25%以下：外周に怒りのパルスリング
+  if (hpRatio < 0.25) {
+    const angerPulse = Math.sin(Date.now() * 0.018) * 0.5 + 0.5;
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, radius * (1.1 + angerPulse * 0.15), 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(255, 0, 0, ${0.5 + angerPulse * 0.4})`;
+    ctx.lineWidth = 3;
+    ctx.stroke();
   }
 
   // 体幹ゲージ
@@ -445,6 +471,63 @@ function drawBoss(ctx: CanvasRenderingContext2D, boss: Boss) {
   ctx.font = 'bold 11px monospace';
   ctx.textAlign = 'center';
   ctx.fillText(`PHASE ${phase}`, pos.x, poiseY + 20);
+
+  ctx.restore();
+}
+
+// ============================
+// 技名表示
+// ============================
+function drawSkillName(ctx: CanvasRenderingContext2D, boss: Boss) {
+  if (boss.skillNameTimer <= 0 || !boss.skillName) return;
+
+  const { skillName, skillNameTimer } = boss;
+  const maxTimer = 90;
+  const progress = skillNameTimer / maxTimer;
+
+  // フェードイン（最初の20%）→ 表示 → フェードアウト（最後の30%）
+  let alpha: number;
+  if (progress > 0.8) {
+    alpha = (1 - progress) / 0.2;
+  } else if (progress < 0.3) {
+    alpha = progress / 0.3;
+  } else {
+    alpha = 1;
+  }
+
+  // 左から滑り込むオフセット
+  const slideX = progress > 0.8 ? (1 - (1 - progress) / 0.2) * (-40) : 0;
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+
+  const cx = CANVAS_WIDTH / 2 + slideX;
+  const cy = boss.pos.y + boss.radius + 50;
+
+  // 背景バー
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+  ctx.fillRect(cx - 140, cy - 18, 280, 30);
+
+  // 装飾ライン
+  ctx.strokeStyle = `rgba(255, 80, 0, ${alpha})`;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(cx - 140, cy - 18);
+  ctx.lineTo(cx + 140, cy - 18);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(cx - 140, cy + 12);
+  ctx.lineTo(cx + 140, cy + 12);
+  ctx.stroke();
+
+  // 技名テキスト
+  ctx.font = 'bold 16px "Courier New", monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.shadowColor = '#ff4400';
+  ctx.shadowBlur = 12;
+  ctx.fillStyle = '#ffcc88';
+  ctx.fillText(skillName, cx, cy - 3);
 
   ctx.restore();
 }
@@ -634,9 +717,10 @@ export function GameCanvas() {
       particles.forEach((p) => drawParticle(ctx, p));
       drawBeams(ctx, beams, player.ultActive);
       bullets.forEach((b) => drawBullet(ctx, b));
-      drawUltAura(ctx, player);   // プレイヤーの下のオーラ（本体より先）
+      drawUltAura(ctx, player);
       drawPlayer(ctx, player);
       drawBoss(ctx, boss);
+      drawSkillName(ctx, boss);
 
       // 必殺技発動フラッシュ（最前面）
       drawUltFlash(ctx, ultFlashTimer);

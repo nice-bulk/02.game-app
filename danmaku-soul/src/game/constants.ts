@@ -76,3 +76,20 @@ export const PHASE3_THRESHOLD = 0.3;
 
 // フェーズ移行演出
 export const PHASE_TRANSITION_DURATION = 90; // フェーズ移行エフェクトフレーム数
+
+// 技名表示
+export const SKILL_NAME_DURATION = 90; // 技名表示フレーム数
+
+// 慣らし難易度（初回プレイは弾速・弾数を下げる）
+// runCount が EASY_RUN_THRESHOLD 以下のとき適用
+export const EASY_RUN_THRESHOLD = 2;
+export const EASY_SPEED_FACTOR = 0.65;   // 弾速 65%
+export const EASY_COUNT_FACTOR = 0.7;    // 弾数 70%
+
+// ランク閾値（クリアタイム秒）
+export const RANK_S_TIME = 90;   // 90秒以内
+export const RANK_A_TIME = 150;  // 150秒以内
+export const RANK_B_TIME = 240;  // 240秒以内
+
+// パリィ演出強化
+export const PARRY_HITSTOP_STRONG = 22; // ジャストパリィ時のヒットストップ（強め）

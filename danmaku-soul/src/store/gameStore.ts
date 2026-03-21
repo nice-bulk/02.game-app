@@ -1,10 +1,11 @@
 import { create } from 'zustand';
-import type { Player, Boss, Bullet, Beam, Particle, GamePhase, InputState } from '../game/types';
+import type { Player, Boss, Bullet, Beam, Particle, GamePhase, InputState, ClearResult } from '../game/types';
 import {
   CANVAS_WIDTH, CANVAS_HEIGHT,
   PLAYER_RADIUS, PLAYER_MAX_HP, PLAYER_MAX_STAMINA,
   BOSS_RADIUS, BOSS_MAX_HP, BOSS_MAX_POISE,
   MAX_STACK,
+  RANK_S_TIME, RANK_A_TIME, RANK_B_TIME,
 } from '../game/constants';
 
 interface ScreenShake {
@@ -29,7 +30,14 @@ export interface GameState {
   beamIdCounter: number;
   screenShake: ScreenShake;
   hitstop: HitstopState;
-  ultFlashTimer: number;        // 必殺技発動直後のフラッシュフレーム
+  ultFlashTimer: number;
+
+  // スコア・リザルト用
+  runCount: number;           // 累計挑戦回数
+  parryCount: number;         // 今回のパリィ成功回数
+  tookDamage: boolean;        // 今回ダメージを受けたか
+  startFrame: number;         // ゲーム開始フレーム
+  clearResult: ClearResult | null; // クリア結果
 
   setPhase: (p: GamePhase) => void;
   setPlayer: (fn: (p: Player) => Player) => void;
@@ -48,6 +56,9 @@ export interface GameState {
   tickHitstop: () => boolean;
   triggerUltFlash: () => void;
   tickUltFlash: () => void;
+  incrementParry: () => void;
+  markDamageTaken: () => void;
+  finishGame: (currentFrame: number) => void;
   resetGame: () => void;
 }
 
@@ -86,6 +97,7 @@ const initialBoss = (): Boss => ({
   poise: BOSS_MAX_POISE,
   maxPoise: BOSS_MAX_POISE,
   poiseRecoverTimer: 0,
+  attackSeqIndex: 0,
   shootTimer: 0,
   bombTimer: 0,
   stunTimer: 0,
@@ -94,8 +106,21 @@ const initialBoss = (): Boss => ({
   bombTelegraphActive: false,
   bombTelegraphTimer: 0,
   hitFlash: 0,
+  skillNameTimer: 0,
+  skillName: '',
   phaseTransitionTimer: 0,
 });
+
+function calcRank(
+  clearTimeSec: number,
+  parryCount: number,
+  tookDamage: boolean,
+): ClearResult['rank'] {
+  if (!tookDamage && clearTimeSec <= RANK_S_TIME) return 'S';
+  if (clearTimeSec <= RANK_A_TIME && parryCount >= 4)  return 'A';
+  if (clearTimeSec <= RANK_B_TIME)                     return 'B';
+  return 'C';
+}
 
 let _bulletId = 0;
 let _particleId = 0;
@@ -119,6 +144,11 @@ export const useGameStore = create<GameState>((set, get) => ({
   screenShake: { intensity: 0, duration: 0 },
   hitstop: { frames: 0 },
   ultFlashTimer: 0,
+  runCount: 0,
+  parryCount: 0,
+  tookDamage: false,
+  startFrame: 0,
+  clearResult: null,
 
   setPhase: (p) => set({ phase: p }),
   setPlayer: (fn) => set((s) => ({ player: fn(s.player) })),
@@ -161,10 +191,27 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
   triggerUltFlash: () => set({ ultFlashTimer: 40 }),
   tickUltFlash: () => set((s) => ({ ultFlashTimer: Math.max(0, s.ultFlashTimer - 1) })),
+  incrementParry: () => set((s) => ({ parryCount: s.parryCount + 1 })),
+  markDamageTaken: () => set({ tookDamage: true }),
+  finishGame: (currentFrame: number) => {
+    const s = get();
+    const clearTimeSec = Math.floor((currentFrame - s.startFrame) / 60);
+    const rank = calcRank(clearTimeSec, s.parryCount, s.tookDamage);
+    set({
+      clearResult: {
+        clearTimeSec,
+        parryCount: s.parryCount,
+        tookDamage: s.tookDamage,
+        runCount: s.runCount,
+        rank,
+      },
+    });
+  },
   resetGame: () => {
     _bulletId = 0;
     _particleId = 0;
     _beamId = 0;
+    const prevRunCount = get().runCount;
     set({
       phase: 'playing',
       player: initialPlayer(),
@@ -175,6 +222,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       screenShake: { intensity: 0, duration: 0 },
       hitstop: { frames: 0 },
       ultFlashTimer: 0,
+      runCount: prevRunCount + 1,
+      parryCount: 0,
+      tookDamage: false,
+      startFrame: 0, // useGameLoop 側で設定
+      clearResult: null,
     });
   },
 }));
