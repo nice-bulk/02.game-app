@@ -93,3 +93,35 @@ export const RANK_B_TIME = 240;  // 240秒以内
 
 // パリィ演出強化
 export const PARRY_HITSTOP_STRONG = 22; // ジャストパリィ時のヒットストップ（強め）
+
+// ---- IRON SENTINEL ----
+export const IRON_MAX_HP    = 350;
+export const IRON_RADIUS    = 36;
+export const IRON_MAX_POISE = 3;
+// フェーズ別移動速度（速め）
+export const IRON_MOVE_SPEED_P1 = 1.4;
+export const IRON_MOVE_SPEED_P2 = 2.0;
+export const IRON_MOVE_SPEED_P3 = 2.8;
+// 弾幕インターバル（速め）
+export const IRON_SHOOT_P1 = 70;
+export const IRON_SHOOT_P2 = 50;
+export const IRON_SHOOT_P3 = 35;
+export const IRON_BOMB_P1  = 180;
+export const IRON_BOMB_P2  = 130;
+export const IRON_BOMB_P3  = 90;
+
+// ---- VOID WRAITH ----
+export const VOID_MAX_HP    = 500;
+export const VOID_RADIUS    = 44;
+export const VOID_MAX_POISE = 5;
+// 移動速度（テレポート的なランダム）
+export const VOID_MOVE_SPEED_P1 = 1.0;
+export const VOID_MOVE_SPEED_P2 = 1.8;
+export const VOID_MOVE_SPEED_P3 = 3.0;
+// 弾幕インターバル（遅いが大量）
+export const VOID_SHOOT_P1 = 100;
+export const VOID_SHOOT_P2 = 72;
+export const VOID_SHOOT_P3 = 48;
+export const VOID_BOMB_P1  = 200;
+export const VOID_BOMB_P2  = 145;
+export const VOID_BOMB_P3  = 95;

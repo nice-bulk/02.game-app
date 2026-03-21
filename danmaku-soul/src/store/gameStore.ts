@@ -1,9 +1,11 @@
 import { create } from 'zustand';
-import type { Player, Boss, Bullet, Beam, Particle, GamePhase, InputState, ClearResult } from '../game/types';
+import type { Player, Boss, Bullet, Beam, Particle, GamePhase, InputState, ClearResult, BossId } from '../game/types';
 import {
   CANVAS_WIDTH, CANVAS_HEIGHT,
   PLAYER_RADIUS, PLAYER_MAX_HP, PLAYER_MAX_STAMINA,
   BOSS_RADIUS, BOSS_MAX_HP, BOSS_MAX_POISE,
+  IRON_MAX_HP, IRON_RADIUS, IRON_MAX_POISE,
+  VOID_MAX_HP, VOID_RADIUS, VOID_MAX_POISE,
   MAX_STACK,
   RANK_S_TIME, RANK_A_TIME, RANK_B_TIME,
 } from '../game/constants';
@@ -33,11 +35,14 @@ export interface GameState {
   ultFlashTimer: number;
 
   // スコア・リザルト用
-  runCount: number;           // 累計挑戦回数
-  parryCount: number;         // 今回のパリィ成功回数
-  tookDamage: boolean;        // 今回ダメージを受けたか
-  startFrame: number;         // ゲーム開始フレーム
-  clearResult: ClearResult | null; // クリア結果
+  runCount: number;
+  parryCount: number;
+  tookDamage: boolean;
+  startFrame: number;
+  clearResult: ClearResult | null;
+
+  // ボス選択
+  selectedBossId: BossId;
 
   setPhase: (p: GamePhase) => void;
   setPlayer: (fn: (p: Player) => Player) => void;
@@ -59,6 +64,7 @@ export interface GameState {
   incrementParry: () => void;
   markDamageTaken: () => void;
   finishGame: (currentFrame: number) => void;
+  selectBoss: (id: BossId) => void;
   resetGame: () => void;
 }
 
@@ -85,31 +91,29 @@ const initialPlayer = (): Player => ({
   ultTimer: 0,
 });
 
-const initialBoss = (): Boss => ({
-  pos: { x: CANVAS_WIDTH / 2, y: 160 },
-  vel: { x: 0.8, y: 0.3 },
-  moveDirTimer: 0,
-  radius: BOSS_RADIUS,
-  hp: BOSS_MAX_HP,
-  maxHp: BOSS_MAX_HP,
-  phase: 1,
-  lastPhase: 1,
-  poise: BOSS_MAX_POISE,
-  maxPoise: BOSS_MAX_POISE,
-  poiseRecoverTimer: 0,
-  attackSeqIndex: 0,
-  shootTimer: 0,
-  bombTimer: 0,
-  stunTimer: 0,
-  telegraphTimer: 0,
-  telegraphActive: false,
-  bombTelegraphActive: false,
-  bombTelegraphTimer: 0,
-  hitFlash: 0,
-  skillNameTimer: 0,
-  skillName: '',
-  phaseTransitionTimer: 0,
-});
+const initialBoss = (bossId: BossId = 'ancient_soul'): Boss => {
+  const hp     = bossId === 'void_wraith' ? VOID_MAX_HP    : bossId === 'iron_sentinel' ? IRON_MAX_HP    : BOSS_MAX_HP;
+  const radius = bossId === 'void_wraith' ? VOID_RADIUS    : bossId === 'iron_sentinel' ? IRON_RADIUS    : BOSS_RADIUS;
+  const poise  = bossId === 'void_wraith' ? VOID_MAX_POISE : bossId === 'iron_sentinel' ? IRON_MAX_POISE : BOSS_MAX_POISE;
+  return {
+    pos: { x: CANVAS_WIDTH / 2, y: 160 },
+    vel: { x: 0.8, y: 0.3 },
+    moveDirTimer: 0,
+    radius,
+    hp, maxHp: hp,
+    phase: 1, lastPhase: 1,
+    poise, maxPoise: poise,
+    poiseRecoverTimer: 0,
+    attackSeqIndex: 0,
+    shootTimer: 0, bombTimer: 0,
+    stunTimer: 0,
+    telegraphTimer: 0, telegraphActive: false,
+    bombTelegraphActive: false, bombTelegraphTimer: 0,
+    hitFlash: 0,
+    skillNameTimer: 0, skillName: '',
+    phaseTransitionTimer: 0,
+  };
+};
 
 function calcRank(
   clearTimeSec: number,
@@ -149,6 +153,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   tookDamage: false,
   startFrame: 0,
   clearResult: null,
+  selectedBossId: 'ancient_soul',
 
   setPhase: (p) => set({ phase: p }),
   setPlayer: (fn) => set((s) => ({ player: fn(s.player) })),
@@ -207,25 +212,26 @@ export const useGameStore = create<GameState>((set, get) => ({
       },
     });
   },
+  selectBoss: (id: BossId) => set({ selectedBossId: id }),
   resetGame: () => {
     _bulletId = 0;
     _particleId = 0;
     _beamId = 0;
-    const prevRunCount = get().runCount;
+    const s = get();
     set({
       phase: 'playing',
       player: initialPlayer(),
-      boss: initialBoss(),
+      boss: initialBoss(s.selectedBossId),
       bullets: [],
       beams: [],
       particles: [],
       screenShake: { intensity: 0, duration: 0 },
       hitstop: { frames: 0 },
       ultFlashTimer: 0,
-      runCount: prevRunCount + 1,
+      runCount: s.runCount + 1,
       parryCount: 0,
       tookDamage: false,
-      startFrame: 0, // useGameLoop 側で設定
+      startFrame: 0,
       clearResult: null,
     });
   },

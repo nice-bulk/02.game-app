@@ -96,7 +96,10 @@ export interface Particle {
   color: string;
 }
 
-export type GamePhase = 'title' | 'playing' | 'paused' | 'dead' | 'victory';
+export type GamePhase = 'title' | 'bossSelect' | 'playing' | 'paused' | 'dead' | 'victory';
+
+// ボスID
+export type BossId = 'ancient_soul' | 'iron_sentinel' | 'void_wraith';
 
 // クリア後のリザルト
 export interface ClearResult {

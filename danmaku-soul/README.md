@@ -114,6 +114,14 @@
 
 ---
 
+## ボス一覧
+
+| ボス | 別名 | HP | 難易度 | 特徴 |
+|---|---|---|---|---|
+| ANCIENT SOUL | 古の魂 | 400 | ★★☆ | 弾幕・体幹崩し基本。パリィ4回でスタン |
+| IRON SENTINEL | 鉄の番人 | 350 | ★★★ | 機械型。十字砲・追尾弾の高速連射 |
+| VOID WRAITH | 虚無の亡霊 | 500 | ★★★ | 全方位散弾＋高速ボムの長期戦 |
+
 ## ディレクトリ構成
 
 ```
@@ -123,17 +131,17 @@ danmaku-soul/
 │   └── preload.ts       # プリロードスクリプト
 ├── src/
 │   ├── game/
-│   │   ├── types.ts         # 型定義（Player, Boss, Bullet 等）
-│   │   ├── constants.ts     # ゲーム定数
-│   │   ├── danmaku.ts       # 弾幕パターン生成（5種類）
-│   │   ├── audio.ts         # 効果音（Web Audio API）
+│   │   ├── types.ts         # 型定義（Player, Boss, Bullet, BossId 等）
+│   │   ├── constants.ts     # ゲーム定数（ボス別パラメータ含む）
+│   │   ├── danmaku.ts       # 弾幕パターン生成・ボス別固定シーケンス
+│   │   ├── audio.ts         # 効果音・BGM（Web Audio API）
 │   │   └── useGameLoop.ts   # ゲームループ・物理・当たり判定
 │   ├── store/
-│   │   └── gameStore.ts     # Zustand ストア
+│   │   └── gameStore.ts     # Zustand ストア（リザルト・ボスID管理）
 │   ├── components/
 │   │   ├── GameCanvas.tsx   # Canvas 描画コンポーネント
 │   │   ├── HUD.tsx          # HP / スタミナ / スタック / ボスHP 表示
-│   │   └── Screens.tsx      # タイトル / ポーズ / 死亡 / クリア画面
+│   │   └── Screens.tsx      # タイトル / ボス選択 / ポーズ / 死亡 / クリア画面
 │   ├── App.tsx
 │   └── index.css
 ├── public/

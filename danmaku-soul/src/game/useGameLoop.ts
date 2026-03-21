@@ -12,6 +12,12 @@ import {
   BOMB_DAMAGE,
   BOMB_INTERVAL_P1, BOMB_INTERVAL_P2, BOMB_INTERVAL_P3,
   SHOOT_INTERVAL_P1, SHOOT_INTERVAL_P2, SHOOT_INTERVAL_P3,
+  IRON_SHOOT_P1, IRON_SHOOT_P2, IRON_SHOOT_P3,
+  IRON_BOMB_P1,  IRON_BOMB_P2,  IRON_BOMB_P3,
+  IRON_MAX_POISE, IRON_MOVE_SPEED_P1, IRON_MOVE_SPEED_P2, IRON_MOVE_SPEED_P3,
+  VOID_SHOOT_P1, VOID_SHOOT_P2, VOID_SHOOT_P3,
+  VOID_BOMB_P1,  VOID_BOMB_P2,  VOID_BOMB_P3,
+  VOID_MAX_POISE, VOID_MOVE_SPEED_P1, VOID_MOVE_SPEED_P2, VOID_MOVE_SPEED_P3,
   HITSTOP_HIT, PARRY_HITSTOP_STRONG,
   BOSS_POISE_RECOVER_TIME, BOSS_STUN_DURATION, BOSS_MAX_POISE,
   PHASE2_THRESHOLD, PHASE3_THRESHOLD, PHASE_TRANSITION_DURATION,
@@ -20,7 +26,8 @@ import {
   SKILL_NAME_DURATION,
   EASY_RUN_THRESHOLD, EASY_SPEED_FACTOR,
 } from './constants';
-import { generateDanmaku, generateBomb, getSequence } from './danmaku';
+import { generateDanmaku, generateBomb, getSequence, getIronSequence, getVoidSequence } from './danmaku';
+import type { BossId } from './types';
 import {
   playBeamSound, playHitSound, playParrySound, playStunSound,
   playBombHitSound, playBossHitSound, playUltSound, playHealSound,
@@ -82,10 +89,60 @@ function getBombInterval(phase: number): number {
   return BOMB_INTERVAL_P3;
 }
 
-function getBossMoveSpeed(phase: number): number {
+function getBossMoveSpeed(phase: number, id: BossId): number {
+  if (id === 'iron_sentinel') {
+    if (phase === 1) return IRON_MOVE_SPEED_P1;
+    if (phase === 2) return IRON_MOVE_SPEED_P2;
+    return IRON_MOVE_SPEED_P3;
+  }
+  if (id === 'void_wraith') {
+    if (phase === 1) return VOID_MOVE_SPEED_P1;
+    if (phase === 2) return VOID_MOVE_SPEED_P2;
+    return VOID_MOVE_SPEED_P3;
+  }
   if (phase === 1) return BOSS_MOVE_SPEED_P1;
   if (phase === 2) return BOSS_MOVE_SPEED_P2;
   return BOSS_MOVE_SPEED_P3;
+}
+
+function getShootIntervalById(phase: number, id: BossId): number {
+  if (id === 'iron_sentinel') {
+    if (phase === 1) return IRON_SHOOT_P1;
+    if (phase === 2) return IRON_SHOOT_P2;
+    return IRON_SHOOT_P3;
+  }
+  if (id === 'void_wraith') {
+    if (phase === 1) return VOID_SHOOT_P1;
+    if (phase === 2) return VOID_SHOOT_P2;
+    return VOID_SHOOT_P3;
+  }
+  return getShootInterval(phase);
+}
+
+function getBombIntervalById(phase: number, id: BossId): number {
+  if (id === 'iron_sentinel') {
+    if (phase === 1) return IRON_BOMB_P1;
+    if (phase === 2) return IRON_BOMB_P2;
+    return IRON_BOMB_P3;
+  }
+  if (id === 'void_wraith') {
+    if (phase === 1) return VOID_BOMB_P1;
+    if (phase === 2) return VOID_BOMB_P2;
+    return VOID_BOMB_P3;
+  }
+  return getBombInterval(phase);
+}
+
+function getMaxPoiseById(id: BossId): number {
+  if (id === 'iron_sentinel') return IRON_MAX_POISE;
+  if (id === 'void_wraith')   return VOID_MAX_POISE;
+  return BOSS_MAX_POISE;
+}
+
+function getBossSequenceById(phase: number, id: BossId) {
+  if (id === 'iron_sentinel') return getIronSequence(phase);
+  if (id === 'void_wraith')   return getVoidSequence(phase);
+  return getSequence(phase);
 }
 
 export function useGameLoop(canvasRef: React.RefObject<HTMLCanvasElement | null>) {
@@ -197,6 +254,9 @@ export function useGameLoop(canvasRef: React.RefObject<HTMLCanvasElement | null>
       const easyFactor = runCount <= EASY_RUN_THRESHOLD
         ? EASY_SPEED_FACTOR + (1 - EASY_SPEED_FACTOR) * ((runCount - 1) / EASY_RUN_THRESHOLD)
         : 1.0;
+
+      // ボスID
+      const bossId: BossId = store.getState().selectedBossId;
 
       // ================================================================
       // ビーム攻撃
@@ -414,7 +474,7 @@ export function useGameLoop(canvasRef: React.RefObject<HTMLCanvasElement | null>
         }
 
         // ---- ボス移動 ----
-        const moveSpeed = getBossMoveSpeed(phase);
+        const moveSpeed = getBossMoveSpeed(phase, bossId);
         let { vel } = b;
         let newMoveDirTimer = b.moveDirTimer + 1;
 
@@ -446,10 +506,10 @@ export function useGameLoop(canvasRef: React.RefObject<HTMLCanvasElement | null>
         if (ny > bottomBound){ ny = bottomBound; vel = { ...vel, y: -Math.abs(vel.y) }; }
 
         // ---- 固定シーケンス攻撃 ----
-        const seq = getSequence(phase);
+        const seq = getBossSequenceById(phase, bossId);
         const currentStep = seq[b.attackSeqIndex % seq.length];
         const isNextBomb = currentStep.type === 'bomb';
-        const shootInterval = isNextBomb ? getBombInterval(phase) : getShootInterval(phase);
+        const shootInterval = isNextBomb ? getBombIntervalById(phase, bossId) : getShootIntervalById(phase, bossId);
         const telegraphNeeded = currentStep.telegraphFrames;
 
         let newShootTimer = b.shootTimer + 1;
@@ -492,6 +552,7 @@ export function useGameLoop(canvasRef: React.RefObject<HTMLCanvasElement | null>
               b.attackSeqIndex,
               playerPos,
               easyFactor,
+              bossId,
             );
             store.getState().setBullets((prev) => [...prev, ...danmaku]);
             store.getState().addScreenShake(1.5, 6);
@@ -671,13 +732,14 @@ export function useGameLoop(canvasRef: React.RefObject<HTMLCanvasElement | null>
 
             // 体幹削り：setBoss のコールバック内で poise を読んで判定（競合回避）
             let didStun = false;
+            const maxPoise = getMaxPoiseById(bossId);
             store.getState().setBoss((b: Boss) => {
               const newPoise = b.poise - 1;
               if (newPoise <= 0) {
                 didStun = true;
                 return {
                   ...b,
-                  poise: BOSS_MAX_POISE,
+                  poise: maxPoise,
                   poiseRecoverTimer: 0,
                   stunTimer: BOSS_STUN_DURATION,
                   hitFlash: 40,

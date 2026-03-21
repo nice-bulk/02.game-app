@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { useGameLoop } from '../game/useGameLoop';
 import { CANVAS_WIDTH, CANVAS_HEIGHT, ULT_DURATION, PHASE_TRANSITION_DURATION } from '../game/constants';
-import type { Player, Boss, Bullet, Beam, Particle } from '../game/types';
+import type { Player, Boss, Bullet, Beam, Particle, BossId } from '../game/types';
 
 // ============================
 // 必殺技 — 発動フラッシュ
@@ -321,7 +321,7 @@ function drawBeams(ctx: CanvasRenderingContext2D, beams: Beam[], ultActive: bool
 // ============================
 // ボス描画（移動軌跡エフェクト追加）
 // ============================
-function drawBoss(ctx: CanvasRenderingContext2D, boss: Boss) {
+function drawBoss(ctx: CanvasRenderingContext2D, boss: Boss, bossId: BossId = 'ancient_soul') {
   const { pos, radius, hp, maxHp, phase, poise, maxPoise, stunTimer,
     telegraphActive, bombTelegraphActive, hitFlash, phaseTransitionTimer } = boss;
   const hpRatio = hp / maxHp;
@@ -400,30 +400,48 @@ function drawBoss(ctx: CanvasRenderingContext2D, boss: Boss) {
   ctx.beginPath();
   ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
 
-  // HPが減るほど暗く・赤く変化
+  // HPが減るほど暗く・赤く変化（ボスIDで色テーマ変更）
   let color1: string, color2: string;
   if (hpRatio < 0.15) {
-    // 瀕死：真っ赤に明滅
     const flicker = Math.sin(Date.now() * 0.025) * 0.5 + 0.5;
-    color1 = `hsl(${0 + flicker * 10}, 100%, ${15 + flicker * 10}%)`;
-    color2 = `hsl(${10 + flicker * 5}, 100%, ${30 + flicker * 15}%)`;
-  } else if (hpRatio < 0.3) {
-    color1 = '#aa0000'; color2 = '#ee2200';
-  } else if (hpRatio < 0.5) {
-    color1 = '#991100'; color2 = '#cc2200';
-  } else if (phase === 3) {
-    color1 = '#cc2200'; color2 = '#ff4400';
-  } else if (phase === 2) {
-    color1 = '#882200'; color2 = '#cc3300';
+    if (bossId === 'iron_sentinel') {
+      color1 = `hsl(${190 + flicker * 10}, 80%, ${15 + flicker * 10}%)`;
+      color2 = `hsl(${200 + flicker * 5}, 90%, ${30 + flicker * 15}%)`;
+    } else if (bossId === 'void_wraith') {
+      color1 = `hsl(${260 + flicker * 10}, 90%, ${10 + flicker * 10}%)`;
+      color2 = `hsl(${270 + flicker * 5}, 100%, ${25 + flicker * 15}%)`;
+    } else {
+      color1 = `hsl(${0 + flicker * 10}, 100%, ${15 + flicker * 10}%)`;
+      color2 = `hsl(${10 + flicker * 5}, 100%, ${30 + flicker * 15}%)`;
+    }
+  } else if (bossId === 'iron_sentinel') {
+    if (hpRatio < 0.3)      { color1 = '#005577'; color2 = '#0099cc'; }
+    else if (hpRatio < 0.5) { color1 = '#004466'; color2 = '#0077aa'; }
+    else if (phase === 3)   { color1 = '#003355'; color2 = '#0066aa'; }
+    else if (phase === 2)   { color1 = '#002244'; color2 = '#005588'; }
+    else                    { color1 = '#001133'; color2 = '#003366'; }
+  } else if (bossId === 'void_wraith') {
+    if (hpRatio < 0.3)      { color1 = '#330055'; color2 = '#660099'; }
+    else if (hpRatio < 0.5) { color1 = '#220044'; color2 = '#550077'; }
+    else if (phase === 3)   { color1 = '#440066'; color2 = '#7700aa'; }
+    else if (phase === 2)   { color1 = '#330055'; color2 = '#660088'; }
+    else                    { color1 = '#220033'; color2 = '#440066'; }
   } else {
-    color1 = '#552200'; color2 = '#883300';
+    // Ancient Soul（既存）
+    if (hpRatio < 0.3)      { color1 = '#aa0000'; color2 = '#ee2200'; }
+    else if (hpRatio < 0.5) { color1 = '#991100'; color2 = '#cc2200'; }
+    else if (phase === 3)   { color1 = '#cc2200'; color2 = '#ff4400'; }
+    else if (phase === 2)   { color1 = '#882200'; color2 = '#cc3300'; }
+    else                    { color1 = '#552200'; color2 = '#883300'; }
   }
 
   const grd = ctx.createRadialGradient(pos.x - radius * 0.3, pos.y - radius * 0.3, 0, pos.x, pos.y, radius);
   grd.addColorStop(0, color2);
   grd.addColorStop(1, color1);
   ctx.fillStyle = grd;
-  ctx.shadowColor = hitFlash > 0 ? '#ffffff' : hpRatio < 0.3 ? '#ff0000' : phase === 3 ? '#ff2200' : '#880000';
+  const shadowBase = bossId === 'iron_sentinel' ? '#0099ff' : bossId === 'void_wraith' ? '#aa00ff' : '#880000';
+  const shadowCrit = bossId === 'iron_sentinel' ? '#00ccff' : bossId === 'void_wraith' ? '#cc00ff' : '#ff0000';
+  ctx.shadowColor = hitFlash > 0 ? '#ffffff' : hpRatio < 0.3 ? shadowCrit : shadowBase;
   ctx.shadowBlur = hitFlash > 0 ? 35 : hpRatio < 0.3 ? 30 : 20;
   ctx.fill();
 
@@ -668,7 +686,7 @@ export function GameCanvas() {
       raf = requestAnimationFrame(render);
       frameCountRef.current++;
 
-      const { player, boss, bullets, beams, particles, screenShake, input, ultFlashTimer } = useGameStore.getState();
+      const { player, boss, bullets, beams, particles, screenShake, input, ultFlashTimer, selectedBossId } = useGameStore.getState();
 
       let shakeX = 0, shakeY = 0;
       if (screenShake.duration > 0) {
@@ -719,7 +737,7 @@ export function GameCanvas() {
       bullets.forEach((b) => drawBullet(ctx, b));
       drawUltAura(ctx, player);
       drawPlayer(ctx, player);
-      drawBoss(ctx, boss);
+      drawBoss(ctx, boss, selectedBossId);
       drawSkillName(ctx, boss);
 
       // 必殺技発動フラッシュ（最前面）

@@ -448,6 +448,73 @@ body {
   box-shadow: 0 0 30px rgba(200, 180, 0, 0.4);
 }
 
+/* ============ ボス選択画面 ============ */
+.bossselect-title {
+  font-size: 28px;
+  font-weight: 900;
+  letter-spacing: 5px;
+  color: #ddbbaa;
+  text-shadow: 0 0 16px rgba(200, 100, 50, 0.6);
+  margin-bottom: 4px;
+}
+
+.bossselect-list {
+  display: flex;
+  gap: 16px;
+  margin: 8px 0 16px;
+}
+
+.bossselect-card {
+  width: 190px;
+  padding: 16px;
+  border: 1px solid rgba(150, 100, 60, 0.4);
+  background: rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+  transition: all 0.15s;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+}
+
+.bossselect-card:hover {
+  border-color: rgba(255, 160, 80, 0.8);
+  background: rgba(80, 40, 0, 0.3);
+  transform: translateY(-3px);
+}
+
+.bossselect-card-selected {
+  border-color: rgba(255, 200, 80, 0.9) !important;
+  background: rgba(100, 60, 0, 0.4) !important;
+  box-shadow: 0 0 16px rgba(255, 180, 0, 0.3);
+}
+
+.bossselect-name {
+  font-size: 13px;
+  font-weight: bold;
+  letter-spacing: 2px;
+  color: #eeddcc;
+}
+
+.bossselect-sub {
+  font-size: 11px;
+  color: rgba(180, 160, 120, 0.7);
+  letter-spacing: 2px;
+}
+
+.bossselect-diff {
+  font-size: 14px;
+  letter-spacing: 3px;
+}
+
+.bossselect-desc {
+  font-size: 11px;
+  color: rgba(180, 180, 180, 0.65);
+  line-height: 1.6;
+  white-space: pre-line;
+  margin-top: 4px;
+}
+
 /* ノーダメクリアバッジ */
 .nodamage-badge {
   font-size: 15px;

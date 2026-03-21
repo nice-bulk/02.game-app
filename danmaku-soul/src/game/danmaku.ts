@@ -51,10 +51,73 @@ export const SEQUENCE_P3: AttackStep[] = [
   { type: 'danmaku', skillName: '終焉の弾幕',   telegraphFrames: 15 },
 ];
 
+// ---- ANCIENT SOUL シーケンス取得 ----
 export function getSequence(phase: number): AttackStep[] {
   if (phase === 3) return SEQUENCE_P3;
   if (phase === 2) return SEQUENCE_P2;
   return SEQUENCE_P1;
+}
+
+// ================================================================
+// IRON SENTINEL シーケンス（機械型・十字・速射）
+// ================================================================
+export const IRON_SEQ_P1: AttackStep[] = [
+  { type: 'danmaku', skillName: '機械十字砲',   telegraphFrames: 25 },
+  { type: 'danmaku', skillName: '追尾弾幕',     telegraphFrames: 25 },
+  { type: 'bomb',    skillName: '誘導爆弾',     telegraphFrames: 40 },
+  { type: 'danmaku', skillName: '機械十字砲',   telegraphFrames: 25 },
+];
+export const IRON_SEQ_P2: AttackStep[] = [
+  { type: 'danmaku', skillName: '高速十字砲',   telegraphFrames: 20 },
+  { type: 'danmaku', skillName: '追尾連射',     telegraphFrames: 20 },
+  { type: 'bomb',    skillName: '誘導爆弾',     telegraphFrames: 35 },
+  { type: 'danmaku', skillName: '回転ガトリング', telegraphFrames: 20 },
+  { type: 'bomb',    skillName: '誘導爆弾',     telegraphFrames: 35 },
+];
+export const IRON_SEQ_P3: AttackStep[] = [
+  { type: 'danmaku', skillName: '殲滅十字砲',   telegraphFrames: 15 },
+  { type: 'danmaku', skillName: '全方位ガトリング', telegraphFrames: 15 },
+  { type: 'bomb',    skillName: '高速誘導弾',   telegraphFrames: 28 },
+  { type: 'danmaku', skillName: '追尾乱射',     telegraphFrames: 15 },
+  { type: 'bomb',    skillName: '高速誘導弾',   telegraphFrames: 28 },
+  { type: 'danmaku', skillName: '最終兵装',     telegraphFrames: 12 },
+];
+
+export function getIronSequence(phase: number): AttackStep[] {
+  if (phase === 3) return IRON_SEQ_P3;
+  if (phase === 2) return IRON_SEQ_P2;
+  return IRON_SEQ_P1;
+}
+
+// ================================================================
+// VOID WRAITH シーケンス（虚無型・散弾・高速ボム）
+// ================================================================
+export const VOID_SEQ_P1: AttackStep[] = [
+  { type: 'danmaku', skillName: '虚無の散弾',   telegraphFrames: 35 },
+  { type: 'bomb',    skillName: '暗黒爆弾',     telegraphFrames: 55 },
+  { type: 'danmaku', skillName: '闇の螺旋',     telegraphFrames: 35 },
+  { type: 'bomb',    skillName: '暗黒爆弾',     telegraphFrames: 55 },
+];
+export const VOID_SEQ_P2: AttackStep[] = [
+  { type: 'danmaku', skillName: '虚空展開',     telegraphFrames: 28 },
+  { type: 'danmaku', skillName: '闇の追尾',     telegraphFrames: 28 },
+  { type: 'bomb',    skillName: '虚無爆弾',     telegraphFrames: 45 },
+  { type: 'danmaku', skillName: '次元亀裂',     telegraphFrames: 28 },
+  { type: 'bomb',    skillName: '虚無爆弾',     telegraphFrames: 45 },
+];
+export const VOID_SEQ_P3: AttackStep[] = [
+  { type: 'danmaku', skillName: '崩壊の散弾',   telegraphFrames: 20 },
+  { type: 'danmaku', skillName: '次元断裂',     telegraphFrames: 18 },
+  { type: 'bomb',    skillName: '深淵爆弾',     telegraphFrames: 38 },
+  { type: 'danmaku', skillName: '虚無の終焉',   telegraphFrames: 15 },
+  { type: 'bomb',    skillName: '深淵爆弾',     telegraphFrames: 38 },
+  { type: 'danmaku', skillName: '宇宙消滅',     telegraphFrames: 12 },
+];
+
+export function getVoidSequence(phase: number): AttackStep[] {
+  if (phase === 3) return VOID_SEQ_P3;
+  if (phase === 2) return VOID_SEQ_P2;
+  return VOID_SEQ_P1;
 }
 
 // ================================================================
@@ -178,9 +241,41 @@ function patternBurst(
 // 公開API
 // ================================================================
 
+// 技名 → パターンのマッピング表
+const SKILL_PATTERN: Record<string, 'radial' | 'spiral' | 'aimed' | 'cross' | 'burst' | 'burst+aimed' | 'cross+aimed'> = {
+  // Ancient Soul
+  '魂の散弾':   'radial',
+  '螺旋の怨念': 'spiral',
+  '業火の螺旋': 'spiral',
+  '怒りの扇':   'aimed',
+  '怒髪天の嵐': 'aimed',
+  '滅びの十字': 'cross',
+  '魂の乱舞':   'radial',
+  '終焉の弾幕': 'burst+aimed',
+  // Iron Sentinel
+  '機械十字砲':     'cross',
+  '追尾弾幕':       'aimed',
+  '高速十字砲':     'cross',
+  '追尾連射':       'aimed',
+  '回転ガトリング': 'radial',
+  '殲滅十字砲':     'cross',
+  '全方位ガトリング': 'radial',
+  '追尾乱射':       'aimed',
+  '最終兵装':       'cross+aimed',
+  // Void Wraith
+  '虚無の散弾': 'burst',
+  '闇の螺旋':   'spiral',
+  '虚空展開':   'radial',
+  '闇の追尾':   'aimed',
+  '次元亀裂':   'burst',
+  '崩壊の散弾': 'burst',
+  '次元断裂':   'burst+aimed',
+  '虚無の終焉': 'radial',
+  '宇宙消滅':   'burst+aimed',
+};
+
 /**
  * 固定シーケンスに基づいて弾幕を生成
- * skillName は呼び出し元が SEQUENCE から取得して表示する
  */
 export function generateDanmaku(
   boss: Boss,
@@ -189,30 +284,24 @@ export function generateDanmaku(
   seqIdx: number,
   playerPos: { x: number; y: number },
   easyFactor = 1.0,
+  bossId: import('./types').BossId = 'ancient_soul',
 ): Bullet[] {
   const phase = boss.phase;
-  const seq = getSequence(phase);
-  const step = seq[seqIdx % seq.length];
+  let seq: AttackStep[];
+  if (bossId === 'iron_sentinel') seq = getIronSequence(phase);
+  else if (bossId === 'void_wraith') seq = getVoidSequence(phase);
+  else seq = getSequence(phase);
 
-  // 技名に応じてパターンを選択
-  if (step.skillName === '魂の散弾' || step.skillName === '魂の乱舞' || step.skillName === '終焉の弾幕') {
-    const bullets = patternRadial(boss, nextId, frame, easyFactor);
-    if (step.skillName === '終焉の弾幕') {
-      // 終焉の弾幕: バースト同時
-      return [...bullets, ...patternBurst(boss, nextId, easyFactor)];
-    }
-    return bullets;
-  }
-  if (step.skillName === '螺旋の怨念' || step.skillName === '業火の螺旋') {
-    return patternSpiral(boss, nextId, frame, easyFactor);
-  }
-  if (step.skillName === '怒りの扇' || step.skillName === '怒髪天の嵐') {
-    return patternAimed(boss, nextId, playerPos, easyFactor);
-  }
-  if (step.skillName === '滅びの十字') {
-    return patternCross(boss, nextId, seqIdx, easyFactor);
-  }
-  // fallback
+  const step = seq[seqIdx % seq.length];
+  const pattern = SKILL_PATTERN[step.skillName] ?? 'radial';
+
+  if (pattern === 'radial')      return patternRadial(boss, nextId, frame, easyFactor);
+  if (pattern === 'spiral')      return patternSpiral(boss, nextId, frame, easyFactor);
+  if (pattern === 'aimed')       return patternAimed(boss, nextId, playerPos, easyFactor);
+  if (pattern === 'cross')       return patternCross(boss, nextId, seqIdx, easyFactor);
+  if (pattern === 'burst')       return patternBurst(boss, nextId, easyFactor);
+  if (pattern === 'burst+aimed') return [...patternBurst(boss, nextId, easyFactor), ...patternAimed(boss, nextId, playerPos, easyFactor)];
+  if (pattern === 'cross+aimed') return [...patternCross(boss, nextId, seqIdx, easyFactor), ...patternAimed(boss, nextId, playerPos, easyFactor)];
   return patternRadial(boss, nextId, frame, easyFactor);
 }
 
